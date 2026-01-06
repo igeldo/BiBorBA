@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+../.venv/
+venv/
+ENV/
+env/
+
+# uv
+.uv/
+uv.lock.tmp
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+data/
+*.db
+*.sqlite
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docker
+langgraph-rag/Dockerfile
+langgraph-rag/docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+docs/
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+htmlcov/

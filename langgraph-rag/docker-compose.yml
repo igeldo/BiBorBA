@@ -1,0 +1,102 @@
+# langgraph-rag/docker-compose.yml
+
+services:
+  app:
+    container_name: langgraph_app
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/langgraph_rag
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=["http://localhost:5173", "http://localhost:3000"]
+    volumes:
+      - ./app:/app/app
+      - ./core:/app/core
+      - ./services:/app/services
+      - ./resources:/app/resources
+      - chroma_data:/app/data/chroma
+    depends_on:
+      - db
+      - chroma
+    networks:
+      - langgraph_network
+
+  # LangGraph PostgreSQL Database
+  db:
+    image: postgres:15
+    container_name: langgraph_db
+    environment:
+      - POSTGRES_DB=langgraph_rag
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - langgraph_network
+
+  # Optional: Ollama service for Windows users with NVIDIA GPU
+  # Start with: docker-compose --profile ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: langgraph_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - langgraph_network
+    profiles:
+      - ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8002:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=False
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - langgraph_network
+
+  # pgAdmin für LangGraph DB
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: langgraph_pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@langgraph.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - langgraph_network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+  ollama_data:
+  chroma_data:
+
+networks:
+  langgraph_network:
+    driver: bridge

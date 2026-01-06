@@ -1,0 +1,8 @@
+/langgraph-rag/resources/
+/langgraph-rag/data/
+/ignore/
+/frontend/node_modules/
+/Notes.txt
+/langgraph-rag/logs/
+/langgraph-rag/tests/data/
+/langgraph-rag/app/tests/data/
