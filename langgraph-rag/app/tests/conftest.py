@@ -11,6 +11,7 @@ import tempfile
 from datetime import datetime
 
 from app.database import Base, SOQuestion, SOAnswer, CollectionConfiguration
+from app.evaluation.models import AnswerEvaluation  # Für Foreign Key in RetrievedDocument
 from app.services.collection_manager import CollectionManager
 
 # Import app for test client
