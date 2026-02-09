@@ -5,8 +5,6 @@ from typing import Dict, Any, Type
 from pydantic import BaseModel
 import logging
 
-from app.utils.timing import TimingContext
-
 logger = logging.getLogger(__name__)
 
 
@@ -61,14 +59,13 @@ class BaseGrader(ABC):
     def _get_grader(self):
         """Lazy-load the grader chain."""
         if self._grader is None:
-            with TimingContext(f"Get {self.grader_name} model", logger):
-                llm = self.model_manager.get_structured_model(
-                    "grader",
-                    self.grade_model,
-                    format="json"
-                )
-                prompt = self.get_prompt()
-                self._grader = prompt | llm
+            llm = self.model_manager.get_structured_model(
+                "grader",
+                self.grade_model,
+                format="json"
+            )
+            prompt = self.get_prompt()
+            self._grader = prompt | llm
         return self._grader
 
     def grade(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -80,8 +77,7 @@ class BaseGrader(ABC):
         grader = self._get_grader()
         grader_input = self.prepare_input(state)
 
-        with TimingContext(f"LLM call: {self.grader_name}", logger):
-            score = grader.invoke(grader_input)
+        score = grader.invoke(grader_input)
 
         return self.process_result(score, state)
 

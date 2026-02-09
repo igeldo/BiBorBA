@@ -1,21 +1,19 @@
 """
 Shared pytest fixtures for testing
 """
-import pytest
+import shutil
+import sys
+from datetime import datetime
 from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from fastapi.testclient import TestClient
-import shutil
-import tempfile
-from datetime import datetime
 
-from app.database import Base, SOQuestion, SOAnswer, CollectionConfiguration
-from app.evaluation.models import AnswerEvaluation  # Für Foreign Key in RetrievedDocument
+from app.database import Base, SOQuestion, SOAnswer
 from app.services.collection_manager import CollectionManager
 
-# Import app for test client
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -30,7 +28,6 @@ def db_engine():
 
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Enable foreign key constraints for SQLite
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
@@ -66,7 +63,6 @@ def client(db_session):
     from app.main import app
     from app.database import get_db
 
-    # Override database dependency
     def override_get_db():
         try:
             yield db_session
@@ -78,7 +74,6 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
 
-    # Clean up override
     app.dependency_overrides.clear()
 
 
@@ -90,7 +85,7 @@ def client(db_session):
 def sample_questions(db_session):
     """Create sample StackOverflow questions with answers
 
-    Hinweis: SOQuestion hat keinen 'id' Feld - der Primärschlüssel ist 'stack_overflow_id'
+    Note: SOQuestion has no 'id' field - the primary key is 'stack_overflow_id'
     """
     questions = []
 
@@ -109,7 +104,6 @@ def sample_questions(db_session):
         )
         db_session.add(q)
 
-        # Antworten erstellen
         for j in range(2):
             a = SOAnswer(
                 stack_overflow_id=2000 + (i * 10) + j,
@@ -126,7 +120,6 @@ def sample_questions(db_session):
 
     db_session.commit()
 
-    # Refresh für Relationships
     for q in questions:
         db_session.refresh(q)
 
@@ -154,11 +147,9 @@ def test_pdf_file(tmp_path):
 
     pdf_path = tmp_path / "test_document.pdf"
 
-    # Create PDF with content
     c = canvas.Canvas(str(pdf_path), pagesize=letter)
     c.setFont("Helvetica", 12)
 
-    # Add content about SQL JOINs
     c.drawString(100, 750, "SQL JOIN Documentation")
     c.drawString(100, 700, "A JOIN clause is used to combine rows from two or more tables,")
     c.drawString(100, 680, "based on a related column between them.")
@@ -170,7 +161,6 @@ def test_pdf_file(tmp_path):
 
     c.save()
 
-    # Copy to resources/documents directory
     resources_dir = Path(__file__).parent.parent / "resources" / "documents"
     resources_dir.mkdir(parents=True, exist_ok=True)
     target = resources_dir / pdf_path.name
@@ -178,7 +168,6 @@ def test_pdf_file(tmp_path):
 
     yield pdf_path
 
-    # Cleanup
     if target.exists():
         target.unlink()
 
@@ -206,14 +195,12 @@ def test_pdf_files(tmp_path):
         c.drawString(100, 680, f"Content about SQL topic {i}")
         c.save()
 
-        # Copy to resources
         target = resources_dir / pdf_path.name
         shutil.copy(pdf_path, target)
         files.append(pdf_path)
 
     yield files
 
-    # Cleanup
     for f in files:
         target = resources_dir / f.name
         if target.exists():
@@ -233,11 +220,9 @@ def chroma_client():
     except ImportError:
         pytest.skip("chromadb not installed")
 
-    # Use ephemeral client for tests (in-memory)
     client = chromadb.EphemeralClient()
     yield client
 
-    # Cleanup happens automatically with ephemeral client
 
 
 @pytest.fixture
@@ -246,7 +231,6 @@ def temp_chroma_dir(tmp_path):
     chroma_dir = tmp_path / "chroma_test"
     chroma_dir.mkdir()
     yield chroma_dir
-    # Cleanup happens automatically via tmp_path
 
 
 # =============================================================================
@@ -258,11 +242,9 @@ def test_settings(tmp_path):
     """Override settings for testing"""
     from app.config import settings
 
-    # Store original values
     original_pdf_path = settings.pdf_path
     original_chroma_dir = settings.chroma_persist_dir
 
-    # Set test paths
     test_resources = tmp_path / "resources" / "documents"
     test_resources.mkdir(parents=True, exist_ok=True)
     settings.pdf_path = test_resources
@@ -273,18 +255,74 @@ def test_settings(tmp_path):
 
     yield settings
 
-    # Restore original values
     settings.pdf_path = original_pdf_path
     settings.chroma_persist_dir = original_chroma_dir
 
 
+
 # =============================================================================
-# Cleanup Fixtures
+# Graph Node Test Fixtures
 # =============================================================================
 
-@pytest.fixture(autouse=True)
-def cleanup_after_test():
-    """Auto-cleanup after each test"""
-    yield
-    # Any global cleanup needed after each test
-    pass
+@pytest.fixture
+def mock_model_manager():
+    """Mocked ModelManager for graph node tests"""
+    from unittest.mock import MagicMock
+    manager = MagicMock()
+    manager.get_chat_model.return_value = MagicMock()
+    manager.get_structured_model.return_value = MagicMock()
+    return manager
+
+
+@pytest.fixture
+def mock_prompt_manager():
+    """Mocked PromptManager for graph node tests"""
+    from unittest.mock import MagicMock
+    manager = MagicMock()
+    manager.get_document_grader_prompt.return_value = MagicMock()
+    manager.get_hallucination_grader_prompt.return_value = MagicMock()
+    manager.get_answer_generator_prompt.return_value = MagicMock()
+    manager.get_question_rewriter_prompt.return_value = MagicMock()
+    manager.get_answer_grader_prompt.return_value = MagicMock()
+    manager.get_pure_llm_prompt.return_value = MagicMock()
+    return manager
+
+
+@pytest.fixture
+def sample_graph_state():
+    """Sample GraphState for tests"""
+    return {
+        "question": "What is SQL JOIN?",
+        "original_question": "What is SQL JOIN?",
+        "generation": "",
+        "documents": [],
+        "model_config": {},
+        "collection_ids": [],
+        "generation_attempts": 0,
+        "transform_attempts": 0,
+        "total_iterations": 0,
+        "max_iterations_reached": False,
+        "no_relevant_docs_fallback": False,
+        "fallback_type": ""
+    }
+
+
+@pytest.fixture
+def sample_documents():
+    """Create sample Document objects for tests"""
+    from langchain_core.documents import Document
+
+    return [
+        Document(
+            page_content="SQL JOIN is used to combine rows from two or more tables based on a related column.",
+            metadata={"source": "test_doc_1.pdf", "page": 1}
+        ),
+        Document(
+            page_content="INNER JOIN returns rows that have matching values in both tables.",
+            metadata={"source": "test_doc_2.pdf", "page": 1}
+        ),
+        Document(
+            page_content="LEFT JOIN returns all rows from the left table with matching rows from the right table.",
+            metadata={"source": "test_doc_3.pdf", "page": 2}
+        )
+    ]

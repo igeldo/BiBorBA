@@ -53,21 +53,21 @@ export const QueryView: React.FC = () => {
     <>
       {/* Query Form */}
       <div className="query-section">
-        <h2>Ask a Question</h2>
+        <h2>Stelle eine Frage</h2>
         <form onSubmit={onSubmit}>
           <div className="form-group">
-            <label htmlFor="question">Your Question:</label>
+            <label htmlFor="question">Deine Frage:</label>
             <textarea
               id="question"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
-              placeholder="Enter your question here..."
+              placeholder="Gib deine Frage hier ein..."
               disabled={loading}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="sessionId">Session ID:</label>
+            <label htmlFor="sessionId">Session-ID:</label>
             <input
               type="text"
               id="sessionId"
@@ -78,7 +78,7 @@ export const QueryView: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="temperature">Temperature (0-1):</label>
+            <label htmlFor="temperature">Temperatur (0-1):</label>
             <input
               type="number"
               id="temperature"
@@ -130,7 +130,7 @@ export const QueryView: React.FC = () => {
 
           <button type="submit" className="button" disabled={loading}>
             {loading && <span className="loading"></span>}
-            {loading ? 'Processing...' : 'Submit Query'}
+            {loading ? 'Wird verarbeitet...' : 'Abfrage absenden'}
           </button>
         </form>
       </div>
@@ -139,7 +139,7 @@ export const QueryView: React.FC = () => {
       {result && !loading && (
         <div className="result-section">
           <div className="result-header">
-            <h2>Answer</h2>
+            <h2>Antwort</h2>
             <div className="source-breakdown">
               {result.source_breakdown && Object.entries(result.source_breakdown).map(([source, count]) => (
                 <span key={source} className="source-tag">
@@ -154,14 +154,14 @@ export const QueryView: React.FC = () => {
             <div className="rewritten-question-notice">
               <div className="notice-header">
                 <span className="notice-icon">🔄</span>
-                <strong>Question was optimized for better retrieval:</strong>
+                <strong>Frage wurde für bessere Abfrage optimiert:</strong>
               </div>
               <div className="notice-content">
                 <div className="original-question">
                   <strong>Original:</strong> {question}
                 </div>
                 <div className="rewritten-question">
-                  <strong>Optimized:</strong> {result.rewritten_question}
+                  <strong>Optimiert:</strong> {result.rewritten_question}
                 </div>
               </div>
             </div>
@@ -203,7 +203,7 @@ export const QueryView: React.FC = () => {
               border: '1px solid #dee2e6'
             }}>
               <h4 style={{ marginBottom: '10px', fontSize: '16px', fontWeight: 600 }}>
-                📚 Collection Breakdown
+                📚 Collection-Aufschlüsselung
               </h4>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {result.collection_breakdown.map((breakdown, idx) => (
@@ -218,7 +218,7 @@ export const QueryView: React.FC = () => {
                       {breakdown.collection_name}
                     </div>
                     <div style={{ fontSize: '0.9em', color: '#666' }}>
-                      {breakdown.document_count} documents
+                      {breakdown.document_count} Dokumente
                       <span style={{
                         marginLeft: '6px',
                         padding: '2px 6px',
@@ -239,13 +239,13 @@ export const QueryView: React.FC = () => {
           {/* Metadata */}
           <div className="metadata">
             <div className="metadata-item">
-              <div className="metadata-label">Documents Retrieved</div>
+              <div className="metadata-label">Abgerufene Dokumente</div>
               <div className="metadata-value">{result.documents_retrieved}</div>
             </div>
 
             {result.stackoverflow_documents !== undefined && result.stackoverflow_documents > 0 && (
               <div className="metadata-item">
-                <div className="metadata-label">StackOverflow Documents</div>
+                <div className="metadata-label">StackOverflow-Dokumente</div>
                 <div className="metadata-value">{result.stackoverflow_documents}</div>
               </div>
             )}
@@ -277,12 +277,12 @@ export const QueryView: React.FC = () => {
             )}
 
             <div className="metadata-item">
-              <div className="metadata-label">Processing Time</div>
+              <div className="metadata-label">Verarbeitungszeit</div>
               <div className="metadata-value">{result.processing_time_ms}ms</div>
             </div>
 
             <div className="metadata-item">
-              <div className="metadata-label">Session ID</div>
+              <div className="metadata-label">Session-ID</div>
               <div className="metadata-value" style={{ fontSize: '12px', wordBreak: 'break-all' }}>
                 {result.session_id}
               </div>
@@ -365,7 +365,7 @@ export const QueryView: React.FC = () => {
                 alignItems: 'center',
                 gap: '8px'
               }}>
-                📄 Retrieved Documents ({result.retrieved_documents.length})
+                📄 Abgerufene Dokumente ({result.retrieved_documents.length})
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {result.retrieved_documents.map((doc, index) => (
@@ -391,7 +391,7 @@ export const QueryView: React.FC = () => {
           {/* Source Breakdown Details */}
           {result.source_breakdown && Object.keys(result.source_breakdown).length > 0 && (
             <div className="source-breakdown-section">
-              <h3>📊 Source Distribution</h3>
+              <h3>📊 Quellenverteilung</h3>
               <div className="source-breakdown-chart">
                 {Object.entries(result.source_breakdown).map(([source, count]) => {
                   const percentage = (count / result.documents_retrieved * 100).toFixed(1)
@@ -399,7 +399,7 @@ export const QueryView: React.FC = () => {
                     <div key={source} className="source-bar-container">
                       <div className="source-bar-label">
                         <span className="source-name">{source.toUpperCase()}</span>
-                        <span className="source-count">{count} docs ({percentage}%)</span>
+                        <span className="source-count">{count} Dokumente ({percentage}%)</span>
                       </div>
                       <div className="source-bar-background">
                         <div
@@ -422,7 +422,7 @@ export const QueryView: React.FC = () => {
       {/* Error Display */}
       {error && (
         <div className="error">
-          <strong>Error:</strong> {error}
+          <strong>Fehler:</strong> {error}
           <button
             onClick={() => setError(null)}
             style={{ marginLeft: '10px', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}

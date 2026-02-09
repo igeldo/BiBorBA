@@ -1,5 +1,5 @@
 # Dockerfile
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -21,8 +21,6 @@ RUN uv sync --frozen --no-cache
 
 # Copy application code
 COPY app ./app/
-COPY app/core ./app/core/
-COPY app/services ./app/services/
 
 # Create necessary directories
 RUN mkdir -p /app/data/chroma /app/resources

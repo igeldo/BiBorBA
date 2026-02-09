@@ -1,21 +1,22 @@
-# services/stackoverflow_connector.py
 """
-Connector Service für StackOverflow Daten in der Hauptdatenbank
+Connector service for StackOverflow data in the main database
 """
 
 import logging
 from typing import List, Dict, Any, Optional
-from sqlalchemy import text, or_
-from sqlalchemy.orm import Session
+
 from langchain_core.documents import Document
+from sqlalchemy import or_, func
+from sqlalchemy.orm import Session
 
 from app.database import SOQuestion, SOAnswer, CollectionQuestion, CollectionConfiguration
+from app.evaluation.models import AnswerEvaluation
 
 logger = logging.getLogger(__name__)
 
 
 class StackOverflowConnector:
-    """Service für Zugriff auf StackOverflow Daten in der Hauptdatenbank"""
+    """Service for accessing StackOverflow data in the main database"""
 
     def __init__(self, db: Session):
         """
@@ -34,13 +35,13 @@ class StackOverflowConnector:
             only_accepted_answers: bool = False
     ) -> List[Dict[str, Any]]:
         """
-        Holt Fragen mit ihren Antworten aus der StackOverflow DB
+        Fetch questions with their answers from the StackOverflow DB
 
         Args:
-            limit: Maximale Anzahl Fragen
-            min_score: Minimum Score für Fragen
-            tags: Liste von Tags zum Filtern (z.B. ["sql", "mysql"])
-            only_accepted_answers: Nur Fragen mit akzeptierten Antworten
+            limit: Maximum number of questions
+            min_score: Minimum score for questions
+            tags: List of tags to filter by (e.g. ["sql", "mysql"])
+            only_accepted_answers: Only questions with accepted answers
 
         Returns:
             Liste von Frage-Antwort Paaren
@@ -157,8 +158,8 @@ class StackOverflowConnector:
             combine_qa: bool = True
     ) -> List[Document]:
         """
-        Konvertiert StackOverflow Q&A zu LangChain Document Objekten
-        Fix: Konvertiert Listen zu Strings für ChromaDB Kompatibilität
+        Convert StackOverflow Q&A to LangChain Document objects.
+        Converts lists to strings for ChromaDB compatibility.
         """
         documents = []
 
@@ -441,7 +442,9 @@ class StackOverflowConnector:
             min_score: Optional[int] = None,
             sort_by: str = "creation_date",
             sort_order: str = "desc",
-            only_without_collections: bool = False
+            only_without_collections: bool = False,
+            not_in_collection_ids: Optional[List[int]] = None,
+            only_without_evaluations: bool = False
     ) -> Dict[str, Any]:
         """
         Get paginated questions with their collection membership info.
@@ -451,9 +454,11 @@ class StackOverflowConnector:
             page_size: Items per page
             tags: Filter by tags (OR logic)
             min_score: Minimum score threshold
-            sort_by: Field to sort by (creation_date, score, view_count)
+            sort_by: Field to sort by (creation_date, score, view_count, title, evaluation_count, latest_evaluation_date)
             sort_order: asc or desc
             only_without_collections: If True, only return questions not in any collection
+            not_in_collection_ids: If provided with only_without_collections, filter to specific collections
+            only_without_evaluations: If True, only return questions without any generated answers
 
         Returns:
             Dictionary with items (questions with collection info) and pagination metadata
@@ -461,37 +466,94 @@ class StackOverflowConnector:
         try:
             from sqlalchemy import and_
 
-            query = self.db.query(SOQuestion)
+            eval_stats_subq = self.db.query(
+                AnswerEvaluation.stackoverflow_question_id,
+                func.count(AnswerEvaluation.id).label('eval_count'),
+                func.max(AnswerEvaluation.created_at).label('latest_eval_date')
+            ).group_by(AnswerEvaluation.stackoverflow_question_id).subquery()
+
+            query = self.db.query(
+                SOQuestion,
+                func.coalesce(eval_stats_subq.c.eval_count, 0).label('evaluation_count'),
+                eval_stats_subq.c.latest_eval_date.label('latest_evaluation_date')
+            ).outerjoin(
+                eval_stats_subq,
+                SOQuestion.stack_overflow_id == eval_stats_subq.c.stackoverflow_question_id
+            )
+
+            count_query = self.db.query(func.count(SOQuestion.stack_overflow_id))
 
             if tags:
                 tag_conditions = [SOQuestion.tags.contains(tag) for tag in tags]
                 query = query.filter(or_(*tag_conditions))
+                count_query = count_query.filter(or_(*tag_conditions))
 
             if min_score is not None:
                 query = query.filter(SOQuestion.score >= min_score)
+                count_query = count_query.filter(SOQuestion.score >= min_score)
 
             if only_without_collections:
-                in_collections_subquery = self.db.query(
-                    CollectionQuestion.question_stack_overflow_id
-                ).distinct()
+                if not_in_collection_ids:
+                    in_selected_collections = self.db.query(
+                        CollectionQuestion.question_stack_overflow_id
+                    ).filter(
+                        CollectionQuestion.collection_id.in_(not_in_collection_ids)
+                    ).distinct()
 
+                    query = query.filter(
+                        ~SOQuestion.stack_overflow_id.in_(in_selected_collections)
+                    )
+                    count_query = count_query.filter(
+                        ~SOQuestion.stack_overflow_id.in_(in_selected_collections)
+                    )
+                else:
+                    in_collections_subquery = self.db.query(
+                        CollectionQuestion.question_stack_overflow_id
+                    ).distinct()
+
+                    query = query.filter(
+                        ~SOQuestion.stack_overflow_id.in_(in_collections_subquery)
+                    )
+                    count_query = count_query.filter(
+                        ~SOQuestion.stack_overflow_id.in_(in_collections_subquery)
+                    )
+
+            if only_without_evaluations:
+                questions_with_evals = self.db.query(
+                    AnswerEvaluation.stackoverflow_question_id
+                ).filter(
+                    AnswerEvaluation.stackoverflow_question_id.isnot(None)
+                ).distinct()
                 query = query.filter(
-                    ~SOQuestion.stack_overflow_id.in_(in_collections_subquery)
+                    ~SOQuestion.stack_overflow_id.in_(questions_with_evals)
+                )
+                count_query = count_query.filter(
+                    ~SOQuestion.stack_overflow_id.in_(questions_with_evals)
                 )
 
-            total = query.count()
+            total = count_query.scalar()
 
-            sort_column = getattr(SOQuestion, sort_by, SOQuestion.creation_date)
-            if sort_order == "desc":
-                query = query.order_by(sort_column.desc())
+            if sort_by == "evaluation_count":
+                sort_column = func.coalesce(eval_stats_subq.c.eval_count, 0)
+            elif sort_by == "latest_evaluation_date":
+                sort_column = eval_stats_subq.c.latest_eval_date
             else:
-                query = query.order_by(sort_column.asc())
+                sort_column = getattr(SOQuestion, sort_by, SOQuestion.creation_date)
+
+            if sort_order == "desc":
+                query = query.order_by(sort_column.desc().nullslast())
+            else:
+                query = query.order_by(sort_column.asc().nullsfirst())
 
             offset = (page - 1) * page_size
-            questions = query.offset(offset).limit(page_size).all()
+            results = query.offset(offset).limit(page_size).all()
 
             items = []
-            for q in questions:
+            for row in results:
+                q = row[0]
+                eval_count = row[1]
+                latest_eval = row[2]
+
                 collections = self.db.query(
                     CollectionConfiguration
                 ).join(
@@ -528,7 +590,9 @@ class StackOverflowConnector:
                     "view_count": q.view_count,
                     "is_answered": q.is_answered,
                     "creation_date": q.creation_date,
-                    "collections": collection_info
+                    "collections": collection_info,
+                    "evaluation_count": eval_count,
+                    "latest_evaluation_date": latest_eval.isoformat() if latest_eval else None
                 })
 
             total_pages = (total + page_size - 1) // page_size if total > 0 else 0

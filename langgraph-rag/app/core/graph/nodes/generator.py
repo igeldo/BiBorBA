@@ -1,11 +1,8 @@
-# core/graph/nodes/generator.py
 import logging
-import time
 from typing import Dict, Any
 from langchain_core.output_parsers import StrOutputParser
 
 from app.config import settings
-from app.utils.timing import TimingContext
 from app.core.graph.utils import format_docs
 
 logger = logging.getLogger(__name__)
@@ -24,8 +21,8 @@ def create_generator_node(model_manager, prompt_manager):
             state (dict): New key added to state, generation, that contains LLM generation
         """
         logger.info("---GENERATE---")
-        question = state["question"]  # May be rewritten for retrieval
-        original_question = state.get("original_question", question)  # Use original for answering
+        question = state["question"]
+        original_question = state.get("original_question", question)
         documents = state["documents"]
         model_config = state.get("model_config", {})
 
@@ -39,17 +36,15 @@ def create_generator_node(model_manager, prompt_manager):
             logger.info(f"Retry {generation_attempts}: Temperature {base_temperature} → {retry_temp}")
             model_config = {**model_config, "temperature": retry_temp}
 
-        with TimingContext("Get chat model and prompt", logger):
-            llm = model_manager.get_chat_model("chat", **model_config)
-            prompt = prompt_manager.get_answer_generator_prompt()
+        llm = model_manager.get_chat_model("chat", **model_config)
+        prompt = prompt_manager.get_answer_generator_prompt()
 
         rag_chain = prompt | llm | StrOutputParser()
 
-        with TimingContext(f"LLM call: Generate answer (attempt {generation_attempts})", logger):
-            generation = rag_chain.invoke({
-                "context": format_docs(documents),
-                "question": original_question
-            })
+        generation = rag_chain.invoke({
+            "context": format_docs(documents),
+            "question": original_question
+        })
 
         logger.info(f"Generation attempt {generation_attempts}/{settings.max_generation_retries}")
         logger.info(f"Generated answer of length: {len(generation)}")

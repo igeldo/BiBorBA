@@ -1,4 +1,3 @@
-# app/api/routes/collection_management.py
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +10,7 @@ from app.api.schemas.collection_schemas import CollectionResponse, CreateCollect
     RemoveQuestionsRequest, PaginatedQuestionsResponse, QuestionResponse, CollectionStatisticsResponse, \
     AvailablePDFResponse, AddDocumentsRequest, RemoveDocumentsRequest, PaginatedDocumentsResponse, DocumentResponse
 from app.api.schemas.schemas import SortField, SortOrder
-from app.config import settings
+from app.config import settings, get_current_embedding_model, get_current_llm_model
 from app.core.graph.tools.vector_store import rebuild_custom_collection
 from app.database import get_db
 from app.dependencies import get_collection_manager
@@ -19,6 +18,15 @@ from app.dependencies import get_collection_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/collection-management", tags=["collection-management"])
+
+
+@router.get("/current-models")
+async def get_current_models():
+    """Get currently configured models."""
+    return {
+        "embedding_model": get_current_embedding_model(),
+        "llm_model": get_current_llm_model()
+    }
 
 
 @router.post("/collections", response_model=CollectionResponse)
@@ -41,7 +49,11 @@ async def create_collection(
             collection_type=collection.collection_type,
             question_count=collection.question_count,
             created_at=collection.created_at.isoformat() if collection.created_at else datetime.utcnow().isoformat(),
-            last_rebuilt_at=collection.last_rebuilt_at.isoformat() if collection.last_rebuilt_at else None
+            last_rebuilt_at=collection.last_rebuilt_at.isoformat() if collection.last_rebuilt_at else None,
+            embedding_model=collection.embedding_model,
+            chroma_exists=collection.chroma_exists,
+            needs_rebuild=collection.needs_rebuild,
+            last_health_check=collection.last_health_check.isoformat() if collection.last_health_check else None
         )
 
     except ValueError as e:
@@ -65,7 +77,11 @@ async def get_collections(manager=Depends(get_collection_manager)):
                 collection_type=c.collection_type,
                 question_count=c.question_count,
                 created_at=c.created_at.isoformat() if c.created_at else datetime.utcnow().isoformat(),
-                last_rebuilt_at=c.last_rebuilt_at.isoformat() if c.last_rebuilt_at else None
+                last_rebuilt_at=c.last_rebuilt_at.isoformat() if c.last_rebuilt_at else None,
+                embedding_model=c.embedding_model,
+                chroma_exists=c.chroma_exists,
+                needs_rebuild=c.needs_rebuild,
+                last_health_check=c.last_health_check.isoformat() if c.last_health_check else None
             )
             for c in collections
         ]
@@ -91,7 +107,11 @@ async def get_collection(collection_id: int, manager=Depends(get_collection_mana
             collection_type=collection.collection_type,
             question_count=collection.question_count,
             created_at=collection.created_at.isoformat() if collection.created_at else datetime.utcnow().isoformat(),
-            last_rebuilt_at=collection.last_rebuilt_at.isoformat() if collection.last_rebuilt_at else None
+            last_rebuilt_at=collection.last_rebuilt_at.isoformat() if collection.last_rebuilt_at else None,
+            embedding_model=collection.embedding_model,
+            chroma_exists=collection.chroma_exists,
+            needs_rebuild=collection.needs_rebuild,
+            last_health_check=collection.last_health_check.isoformat() if collection.last_health_check else None
         )
 
     except HTTPException:
@@ -119,7 +139,6 @@ async def delete_collection(collection_id: int, manager=Depends(get_collection_m
         raise HTTPException(status_code=500, detail="Failed to delete collection")
 
 
-# Question assignment endpoints
 
 @router.post("/collections/{collection_id}/questions")
 async def add_questions_to_collection(
@@ -187,7 +206,6 @@ async def get_collection_questions(
     """Get questions in a collection (paginated)"""
     try:
 
-        # Parse tags
         tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
         result = manager.get_collection_questions(
@@ -241,7 +259,6 @@ async def get_test_questions(
     """Get questions NOT in collection (test set candidates)"""
     try:
 
-        # Parse tags
         tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
         result = manager.get_non_collection_questions(
@@ -293,11 +310,9 @@ async def get_collection_statistics(
 
         stats = manager.get_collection_statistics(collection_id)
 
-        # Health Check hinzufügen
         health_service = get_collection_health_service()
         health = health_service.check_collection_health(collection_id, db)
 
-        # Kombiniere Stats + Health
         combined_stats = {
             **stats,
             "chroma_exists": health["exists"],
@@ -324,7 +339,6 @@ async def check_all_collections_health(db: Session = Depends(get_db)):
         health_service = get_collection_health_service()
         summary = health_service.check_all_collections(db)
 
-        # Liste aller Collections mit Status
         collections = db.query(CollectionConfiguration).all()
         details = [
             {
@@ -347,6 +361,26 @@ async def check_all_collections_health(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to check collection health")
 
 
+@router.get("/collections/compatibility")
+async def check_collection_compatibility(
+    collection_ids: List[int],
+    manager=Depends(get_collection_manager)
+):
+    """
+    Check compatibility of collections with current embedding model.
+    Returns success or raises error with details.
+    """
+    try:
+        manager.validate_collection_compatibility(collection_ids)
+        return {
+            "compatible": True,
+            "current_embedding_model": get_current_embedding_model(),
+            "collection_ids": collection_ids
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/collections/{collection_id}/rebuild")
 async def rebuild_collection(
     collection_id: int,
@@ -362,12 +396,10 @@ async def rebuild_collection(
     from app.services.job_manager import get_rebuild_manager
 
     try:
-        # Verify collection exists
         collection = manager.get_collection(collection_id)
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
 
-        # Create job for tracking progress
         job_manager = get_rebuild_manager()
         job_id = job_manager.create_job(
             parameters={
@@ -383,9 +415,7 @@ async def rebuild_collection(
             }
         )
 
-        # Rebuild in background
         def rebuild_task():
-            # Create new session for background task (original db session may be closed)
             from app.database import SessionLocal
             from app.services.collection_manager import CollectionManager
 
@@ -397,25 +427,19 @@ async def rebuild_collection(
                 job_manager.update_progress(job_id, progress)
 
             try:
-                # Clear any previous error
                 bg_manager.clear_rebuild_error(collection_id)
 
-                # Update phase to loading
                 job_manager.update_progress(job_id, {"phase": "loading_documents"})
 
-                # Perform rebuild with progress callback
                 stats = rebuild_custom_collection(collection_id, progress_callback=progress_callback)
 
-                # Update timestamp AFTER successful rebuild
                 bg_manager.update_collection_rebuild_time(collection_id)
 
-                # Mark job as completed
                 job_manager.update_progress(job_id, {"phase": "completed"})
                 job_manager.complete_job(job_id)
 
                 logger.info(f"Background rebuild completed: {stats}")
             except Exception as e:
-                # Set error so frontend can display it
                 bg_manager.set_rebuild_error(collection_id, str(e))
                 job_manager.fail_job(job_id, str(e))
                 logger.error(f"Background rebuild failed: {e}")
@@ -465,7 +489,6 @@ async def get_rebuild_job_status(job_id: str):
     }
 
 
-# PDF Document Management Endpoints
 
 @router.get("/available-pdfs", response_model=List[AvailablePDFResponse])
 async def get_available_pdfs():
@@ -479,7 +502,6 @@ async def get_available_pdfs():
 
         available_pdfs = []
 
-        # List all PDF files
         for pdf_file in pdf_dir.rglob("*.pdf"):
             try:
                 relative_path = pdf_file.relative_to(pdf_dir)
@@ -495,7 +517,6 @@ async def get_available_pdfs():
                 logger.warning(f"Error reading PDF file {pdf_file}: {e}")
                 continue
 
-        # Sort by name
         available_pdfs.sort(key=lambda x: x.name)
 
         logger.info(f"Found {len(available_pdfs)} available PDFs")

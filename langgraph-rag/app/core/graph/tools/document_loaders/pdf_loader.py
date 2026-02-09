@@ -1,6 +1,5 @@
-# core/graph/tools/document_loaders/pdf_loader.py
 """
-PDF Document Loader mit PyMuPDF
+PDF Document Loader using PyMuPDF
 """
 
 import logging
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PDFDocumentLoader(BaseDocumentLoader):
-    """Spezialisierter Loader für PDF-Dokumente"""
+    """Specialized loader for PDF documents"""
 
     def __init__(self):
         super().__init__()
@@ -35,10 +34,8 @@ class PDFDocumentLoader(BaseDocumentLoader):
         documents = []
 
         if pdf_path.is_file() and pdf_path.suffix.lower() == '.pdf':
-            # Single PDF file
             documents = self._load_single_pdf(pdf_path)
         elif pdf_path.is_dir():
-            # Directory with PDF files
             documents = self._load_pdf_directory(pdf_path)
         else:
             raise ValueError(f"PDF path must be a file or directory: {pdf_path}")
@@ -46,7 +43,6 @@ class PDFDocumentLoader(BaseDocumentLoader):
         if not documents:
             raise ValueError("No documents could be loaded from PDF path")
 
-        # Validate and split documents
         documents = self.validate_documents(documents)
         return self.split_documents(documents)
 
@@ -102,7 +98,7 @@ class PDFDocumentLoader(BaseDocumentLoader):
     def _load_with_pymupdf(self, pdf_file: Path) -> List[Document]:
         """Load PDF using PyMuPDF"""
         try:
-            import fitz  # pymupdf
+            import fitz
 
             logger.info(f"Using PyMuPDF for {pdf_file.name}")
 
@@ -117,7 +113,7 @@ class PDFDocumentLoader(BaseDocumentLoader):
                     page = pdf_doc[page_num]
                     text = page.get_text()
 
-                    if text.strip():  # Nur Seiten mit Inhalt
+                    if text.strip():
                         doc = Document(
                             page_content=text,
                             metadata={

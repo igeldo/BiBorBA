@@ -52,7 +52,6 @@ class JobManager:
         if job_id in self._jobs:
             self._jobs[job_id]["progress"].update(progress)
 
-            # If result is provided, append it
             if "result" in progress:
                 self._jobs[job_id]["results"].append(progress["result"])
 
@@ -99,7 +98,6 @@ class JobManager:
         if status:
             jobs = [j for j in jobs if j["status"] == status]
 
-        # Sort by started_at descending
         jobs.sort(key=lambda x: x["started_at"], reverse=True)
 
         return jobs[:limit]
@@ -117,10 +115,10 @@ class JobManager:
         return True
 
 
-# Singleton instances for each job type
 _batch_query_manager: Optional[JobManager] = None
 _scraper_manager: Optional[JobManager] = None
 _rebuild_manager: Optional[JobManager] = None
+_export_manager: Optional[JobManager] = None
 
 
 def get_batch_query_manager() -> JobManager:
@@ -145,3 +143,11 @@ def get_rebuild_manager() -> JobManager:
     if _rebuild_manager is None:
         _rebuild_manager = JobManager("rebuild")
     return _rebuild_manager
+
+
+def get_export_manager() -> JobManager:
+    """Get global export job manager instance."""
+    global _export_manager
+    if _export_manager is None:
+        _export_manager = JobManager("export")
+    return _export_manager

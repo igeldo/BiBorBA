@@ -44,7 +44,7 @@ function Test-OllamaRunning {
 function Test-OllamaModels {
     Write-Host "Checking required Ollama models..." -ForegroundColor Yellow
 
-    $requiredModels = @("nomic-embed-text", "llama3.1:8b")
+    $requiredModels = @("embeddinggemma:latest", "gemma3:12b")
     $missingModels = @()
 
     # Use API instead of CLI to avoid Win32 errors
@@ -139,7 +139,7 @@ function Start-Backend {
         Write-Host "Waiting for Ollama container to be ready..." -NoNewline
         for ($i = 1; $i -le 30; $i++) {
             try {
-                $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -Method Get -TimeoutSec 2 -UseBasicParsing
+                $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -Method Get -TimeoutSec 10 -UseBasicParsing
                 if ($response.StatusCode -eq 200) {
                     Write-Host " ready!" -ForegroundColor Green
                     break
@@ -183,9 +183,9 @@ function Wait-ForServices {
     # Wait for backend
     Write-Host "Waiting for backend API..." -NoNewline
     $backendReady = $false
-    for ($i = 1; $i -le 30; $i++) {
+    for ($i = 1; $i -le 60; $i++) {
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -Method Get -TimeoutSec 2 -UseBasicParsing
+            $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -Method Get -TimeoutSec 10 -UseBasicParsing
             if ($response.StatusCode -eq 200) {
                 Write-Host " ready!" -ForegroundColor Green
                 $backendReady = $true
@@ -206,7 +206,7 @@ function Wait-ForServices {
     $frontendReady = $false
     for ($i = 1; $i -le 30; $i++) {
         try {
-            $response = Invoke-WebRequest -Uri "http://localhost:5173" -Method Get -TimeoutSec 2 -UseBasicParsing
+            $response = Invoke-WebRequest -Uri "http://localhost:5173" -Method Get -TimeoutSec 10 -UseBasicParsing
             if ($response.StatusCode -eq 200) {
                 Write-Host " ready!" -ForegroundColor Green
                 $frontendReady = $true
@@ -237,7 +237,7 @@ try {
         $ollamaReady = $false
         for ($i = 1; $i -le 60; $i++) {
             try {
-                $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -Method Get -TimeoutSec 2 -UseBasicParsing
+                $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -Method Get -TimeoutSec 10 -UseBasicParsing
                 if ($response.StatusCode -eq 200) {
                     Write-Host " ready!" -ForegroundColor Green
                     $ollamaReady = $true

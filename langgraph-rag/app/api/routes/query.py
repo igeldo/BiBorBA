@@ -1,4 +1,3 @@
-# app/api/routes/query.py
 """
 Query-bezogene Endpoints
 - Standard Query
@@ -13,8 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.schemas import (
     RetrieverType,
-    GraphType,
-    StackOverflowQueryRequest,
+    QueryRequest,
     CollectionQueryRequest,
     CollectionBreakdown,
     QueryResponse,
@@ -22,7 +20,7 @@ from app.api.schemas.schemas import (
     RetrievedDocument,
     QueryRatingRequest
 )
-from app.api.middleware import safe_error_handler
+from app.config import get_current_llm_model
 from app.database import get_db, QueryLogService, QueryLog
 from app.dependencies import get_collection_manager, get_graph_service
 
@@ -31,9 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=QueryResponse)
-@safe_error_handler
 async def query_documents(
-        request: StackOverflowQueryRequest,
+        request: QueryRequest,
         db: Session = Depends(get_db),
         graph_service=Depends(get_graph_service)
 ):
@@ -49,6 +46,7 @@ async def query_documents(
         session_id=request.session_id,
         graph_type=request.graph_type,
         retriever_type=RetrieverType.PDF,
+        collection_ids=request.collection_ids,
         model_config=request.llm_config or {}
     )
 
@@ -66,7 +64,8 @@ async def query_documents(
         documents_retrieved=result.get("documents_retrieved", 0),
         processing_time_ms=processing_time,
         model_config=request.llm_config,
-        graph_trace=result.get("graph_trace")
+        graph_trace=result.get("graph_trace"),
+        llm_model=get_current_llm_model()
     )
 
     iteration_metrics = None
@@ -96,7 +95,6 @@ async def query_documents(
 
 
 @router.post("/collections", response_model=QueryResponse)
-@safe_error_handler
 async def query_collections(
         request: CollectionQueryRequest,
         db: Session = Depends(get_db),
@@ -104,12 +102,17 @@ async def query_collections(
         collection_manager=Depends(get_collection_manager)
 ):
     """
-    Query mit Custom Collections
+    Query with custom collections.
 
-    Kombiniert mehrere Collections (StackOverflow und/oder PDF) für optimale Antworten.
+    Combines multiple collections (StackOverflow and/or PDF) for optimal answers.
     """
     if not request.collection_ids:
         raise HTTPException(status_code=400, detail="At least one collection_id is required")
+
+    try:
+        collection_manager.validate_collection_compatibility(request.collection_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     start_time = time.time()
     logger.info(f"Collection query with {len(request.collection_ids)} collections: {request.collection_ids}")
@@ -149,7 +152,8 @@ async def query_collections(
         documents_retrieved=total_documents,
         processing_time_ms=processing_time,
         model_config=request.llm_config or {},
-        graph_trace=result.get("graph_trace")
+        graph_trace=result.get("graph_trace"),
+        llm_model=get_current_llm_model()
     )
 
     iteration_metrics = None
@@ -180,7 +184,6 @@ async def query_collections(
 
 
 @router.post("/rate")
-@safe_error_handler
 async def rate_query(
         request: QueryRatingRequest,
         db: Session = Depends(get_db)

@@ -1,9 +1,8 @@
-# config.py
 from pathlib import Path
 from typing import Dict, Any, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -18,7 +17,8 @@ class Settings(BaseSettings):
         "embedding": "embeddinggemma:latest",
         "chat": "gemma3:12b",
         "grader": "gemma3:12b",
-        "rewriter": "gemma3:12b"
+        "rewriter": "gemma3:12b",
+        "evaluation": "gemma3:12b"  # LLM Correctness evaluation
     })
 
     # Paths
@@ -60,14 +60,14 @@ class Settings(BaseSettings):
     # Document Grading
     document_grading_batch_size: int = Field(default=4, description="Documents to grade in parallel (max 4)")
     document_grading_retry_attempts: int = Field(default=2, description="Max retry attempts for TCP errors")
-    document_grading_confidence_threshold: float = Field(default=0.6, description="Min confidence for relevance")
+    document_grading_confidence_threshold: float = Field(default=0.5, description="Min confidence for relevance")
 
     # Retry Variation
     enable_retry_variation: bool = Field(default=True, description="Increase temperature on retries")
     retry_temperature_increment: float = Field(default=0.1, description="Temperature increase per retry")
 
     # Retrieval
-    retrieval_k: int = Field(default=4, description="Number of documents to retrieve")
+    retrieval_k: int = Field(default=8, description="Number of documents to retrieve")
 
     # Embedding
     embedding_batch_size: int = Field(default=50, description="Batch size for embedding operations")
@@ -76,10 +76,13 @@ class Settings(BaseSettings):
     # Hallucination Grading
     hallucination_batch_size: int = Field(default=3, description="Batch size for hallucination check")
 
-    @field_validator('pdf_path', 'chroma_persist_dir')
+    # Export Configuration
+    export_dir: Path = Field(default_factory=lambda: Path.cwd() / "exports", description="Directory for export files")
+
+    @field_validator('pdf_path', 'chroma_persist_dir', 'export_dir')
     @classmethod
     def resolve_paths(cls, v):
-        """Resolve paths to absolute paths"""
+        """Resolve paths to absolute paths."""
         if isinstance(v, str):
             path = Path(v)
         else:
@@ -101,17 +104,41 @@ class Settings(BaseSettings):
 
         return current
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-        "extra": "ignore"
-    }
+    @field_validator('log_level')
+    @classmethod
+    def validate_log_level(cls, v: str) -> str:
+        """Validate log level is a valid Python logging level."""
+        valid_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
+        upper_v = v.upper()
+        if upper_v not in valid_levels:
+            raise ValueError(f"log_level must be one of {valid_levels}")
+        return upper_v
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
-# Global settings instance
 settings = Settings()
 
 
 def get_settings() -> Settings:
     """Dependency for FastAPI"""
     return settings
+
+
+def get_current_llm_model() -> str:
+    """Returns the currently configured chat model."""
+    return settings.ollama_models.get("chat", "unknown")
+
+
+def get_current_embedding_model() -> str:
+    """Returns the currently configured embedding model."""
+    return settings.ollama_models.get("embedding", "unknown")
+
+
+def get_current_evaluation_model() -> str:
+    """Returns the currently configured evaluation model."""
+    return settings.ollama_models.get("evaluation", "unknown")

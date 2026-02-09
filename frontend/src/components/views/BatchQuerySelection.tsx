@@ -2,20 +2,24 @@ import React, { useState, useEffect } from 'react'
 import { apiService } from '../../services/api'
 import type { QuestionWithCollections, BatchQueryRequest, Collection } from '../../types'
 import { GraphType } from '../../types'
+import { SortableHeader, HeaderCell, TablePagination, StackOverflowLink, TagList } from '../table'
+import { TABLE_PAGE_SIZES, DEFAULT_PAGE_SIZE, TABLE_COLORS, getScoreDisplayColor } from '../../theme/tableConstants'
 
 export const BatchQuerySelection: React.FC = () => {
   const [questions, setQuestions] = useState<QuestionWithCollections[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [onlyWithoutCollections, setOnlyWithoutCollections] = useState(false)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tagFilter, setTagFilter] = useState('')
   const [minScoreFilter, setMinScoreFilter] = useState<number | undefined>(undefined)
-  const [sortBy, setSortBy] = useState<'creation_date' | 'score' | 'view_count'>('creation_date')
+  const [sortBy, setSortBy] = useState<string>('creation_date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [onlyWithoutEvaluations, setOnlyWithoutEvaluations] = useState(false)
 
   // Running job detection
   const [hasRunningJob, setHasRunningJob] = useState(false)
@@ -31,7 +35,7 @@ export const BatchQuerySelection: React.FC = () => {
   // Fetch questions
   useEffect(() => {
     loadQuestions()
-  }, [page, onlyWithoutCollections, tagFilter, minScoreFilter, sortBy, sortOrder])
+  }, [page, pageSize, onlyWithoutCollections, onlyWithoutEvaluations, tagFilter, minScoreFilter, sortBy, sortOrder, selectedCollections])
 
   // Load available collections on mount
   useEffect(() => {
@@ -69,11 +73,15 @@ export const BatchQuerySelection: React.FC = () => {
     try {
       const result = await apiService.getQuestionsWithCollections({
         page,
-        page_size: 20,
+        page_size: pageSize,
         only_without_collections: onlyWithoutCollections,
+        not_in_collection_ids: onlyWithoutCollections && selectedCollections.length > 0
+          ? selectedCollections
+          : undefined,
+        only_without_evaluations: onlyWithoutEvaluations,
         tags: tagFilter || undefined,
         min_score: minScoreFilter,
-        sort_by: sortBy,
+        sort_by: sortBy as 'creation_date' | 'score' | 'view_count',
         sort_order: sortOrder
       })
       setQuestions(result.items)
@@ -173,8 +181,8 @@ export const BatchQuerySelection: React.FC = () => {
   return (
     <div className="batch-selection-view">
       <div className="query-section">
-        <h2>📋 Batch Query Processing</h2>
-        <p>Select up to 50 questions to process in batch</p>
+        <h2>📋 Batch-Abfrage-Verarbeitung</h2>
+        <p>Wählen Sie bis zu 50 Fragen für die Batch-Verarbeitung</p>
 
         {/* Running Job Warning */}
         {hasRunningJob && !checkingForJobs && (
@@ -190,10 +198,10 @@ export const BatchQuerySelection: React.FC = () => {
           }}>
             <span style={{ fontSize: '20px' }}>⚠️</span>
             <div style={{ flex: 1 }}>
-              <strong>A batch job is currently running.</strong>
+              <strong>Ein Batch-Job wird gerade ausgeführt.</strong>
               <br />
               <span style={{ fontSize: '14px', color: '#666' }}>
-                You can start a new batch after the current job completes.
+                Sie können einen neuen Batch starten, nachdem der aktuelle Job abgeschlossen ist.
               </span>
             </div>
           </div>
@@ -210,10 +218,10 @@ export const BatchQuerySelection: React.FC = () => {
             border: '2px solid #dee2e6'
           }}>
             <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '16px', fontWeight: 'bold' }}>
-              Select Collections for Retrieval
+              Collections für Retrieval auswählen
             </h3>
             <p style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
-              Choose which collections to use for document retrieval (optional). If none selected, StackOverflow retriever will be used.
+              Wählen Sie, welche Collections für den Dokumentenabruf verwendet werden sollen (optional). Wenn keine ausgewählt sind, wird der StackOverflow-Retriever verwendet.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
               {availableCollections.map(collection => (
@@ -248,7 +256,7 @@ export const BatchQuerySelection: React.FC = () => {
                       </div>
                     )}
                     <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                      {collection.question_count} questions
+                      {collection.question_count} Fragen
                     </div>
                   </div>
                 </label>
@@ -256,7 +264,7 @@ export const BatchQuerySelection: React.FC = () => {
             </div>
             {selectedCollections.length > 0 && (
               <div style={{ marginTop: '15px', padding: '10px', background: '#e7f3ff', borderRadius: '4px' }}>
-                <strong>{selectedCollections.length}</strong> collection(s) selected for retrieval
+                <strong>{selectedCollections.length}</strong> Collection(s) für Retrieval ausgewählt
               </div>
             )}
           </div>
@@ -276,7 +284,7 @@ export const BatchQuerySelection: React.FC = () => {
             fontWeight: 'bold',
             color: '#333'
           }}>
-            🔄 Graph Types to Execute
+            🔄 Auszuführende Graph Types
           </h3>
           <p style={{ marginBottom: '15px', fontSize: '14px', color: '#666' }}>
             Jede Frage wird mit {selectedGraphTypes.length > 1 ? 'jedem' : 'dem'} ausgewählten Graph-Typ verarbeitet.
@@ -378,7 +386,7 @@ export const BatchQuerySelection: React.FC = () => {
           marginBottom: '20px'
         }}>
           <div className="form-group">
-            <label>Filter by Tags:</label>
+            <label>Nach Tags filtern:</label>
             <input
               type="text"
               value={tagFilter}
@@ -402,23 +410,6 @@ export const BatchQuerySelection: React.FC = () => {
               }}
             />
           </div>
-
-          <div className="form-group">
-            <label>Sort By:</label>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as 'creation_date' | 'score' | 'view_count')}>
-              <option value="creation_date">Creation Date</option>
-              <option value="score">Score</option>
-              <option value="view_count">View Count</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Order:</label>
-            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}>
-              <option value="desc">Descending</option>
-              <option value="asc">Ascending</option>
-            </select>
-          </div>
         </div>
 
         {/* Quick Filters */}
@@ -440,7 +431,24 @@ export const BatchQuerySelection: React.FC = () => {
                 setPage(1)
               }}
             />
-            <span>Show only questions not in collections</span>
+            <span>
+              {selectedCollections.length > 0
+                ? 'Zeige nur Fragen NICHT in ausgewählten Collections'
+                : 'Zeige nur Fragen, die in keiner Collection sind'
+              }
+            </span>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={onlyWithoutEvaluations}
+              onChange={(e) => {
+                setOnlyWithoutEvaluations(e.target.checked)
+                setPage(1)
+              }}
+            />
+            <span>Zeige nur Fragen ohne generierte Antworten</span>
           </label>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -452,7 +460,7 @@ export const BatchQuerySelection: React.FC = () => {
                 onClick={clearSelection}
                 style={{ padding: '4px 12px', fontSize: '14px', background: '#6c757d' }}
               >
-                Clear Selection
+                Auswahl löschen
               </button>
             )}
             <button
@@ -469,10 +477,10 @@ export const BatchQuerySelection: React.FC = () => {
               title={hasRunningJob ? 'A batch job is already running' : undefined}
             >
               {checkingForJobs
-                ? 'Checking...'
+                ? 'Wird geprüft...'
                 : hasRunningJob
-                  ? 'Job Running...'
-                  : `Start Batch (${selectedIds.size})`
+                  ? 'Job läuft...'
+                  : `Batch starten (${selectedIds.size})`
               }
             </button>
           </div>
@@ -482,7 +490,7 @@ export const BatchQuerySelection: React.FC = () => {
         {loading && questions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <span className="loading"></span>
-            <p>Loading questions...</p>
+            <p>Fragen werden geladen...</p>
           </div>
         ) : (
           <>
@@ -496,26 +504,102 @@ export const BatchQuerySelection: React.FC = () => {
                 boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
               }}>
                 <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
-                    <th style={{ padding: '12px', textAlign: 'center', width: '50px' }}>
+                  <tr style={{ background: TABLE_COLORS.headerBg }}>
+                    <HeaderCell align="center" width="50px">
                       <input
                         type="checkbox"
                         onChange={handleSelectAll}
                         checked={questions.length > 0 && questions.every(q => selectedIds.has(q.id))}
                         disabled={loading}
                       />
-                    </th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Title</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Score</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Collections</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Created</th>
+                    </HeaderCell>
+                    <SortableHeader
+                      column="title"
+                      label="Titel"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('asc')
+                        }
+                        setPage(1)
+                      }}
+                    />
+                    <SortableHeader
+                      column="score"
+                      label="Score"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setPage(1)
+                      }}
+                      align="center"
+                    />
+                    <HeaderCell>Collections</HeaderCell>
+                    <SortableHeader
+                      column="evaluation_count"
+                      label="Generierte Antworten"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setPage(1)
+                      }}
+                      align="center"
+                    />
+                    <SortableHeader
+                      column="creation_date"
+                      label="Erstellt"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setPage(1)
+                      }}
+                      align="center"
+                    />
+                    <SortableHeader
+                      column="latest_evaluation_date"
+                      label="Zuletzt bewertet"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setPage(1)
+                      }}
+                      align="center"
+                    />
                   </tr>
                 </thead>
                 <tbody>
                   {questions.map(q => (
                     <tr key={q.id} style={{
-                      borderBottom: '1px solid #f0f0f0',
-                      background: selectedIds.has(q.id) ? '#e7f3ff' : 'transparent'
+                      borderBottom: `1px solid ${TABLE_COLORS.rowBorder}`,
+                      background: selectedIds.has(q.id) ? TABLE_COLORS.selectedRow : 'transparent'
                     }}>
                       <td style={{ padding: '12px', textAlign: 'center' }}>
                         <input
@@ -526,32 +610,26 @@ export const BatchQuerySelection: React.FC = () => {
                         />
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <a
-                          href={`https://stackoverflow.com/questions/${q.stack_overflow_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#007bff', textDecoration: 'none' }}
-                        >
-                          {q.title}
-                        </a>
-                        <div style={{ marginTop: '5px', display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                          {q.tags.slice(0, 3).map((tag, idx) => (
-                            <span key={idx} className="tag">{tag}</span>
-                          ))}
+                        <StackOverflowLink
+                          stackOverflowId={q.stack_overflow_id}
+                          title={q.title}
+                        />
+                        <div style={{ marginTop: '5px' }}>
+                          <TagList tags={q.tags} maxTags={3} />
                         </div>
                       </td>
                       <td style={{
                         padding: '12px',
                         textAlign: 'center',
                         fontWeight: 'bold',
-                        color: q.score > 5 ? '#28a745' : '#666'
+                        color: getScoreDisplayColor(q.score)
                       }}>
                         {q.score}
                       </td>
                       <td style={{ padding: '12px' }}>
                         {q.collections.length === 0 ? (
                           <span style={{ color: '#999', fontSize: '14px', fontStyle: 'italic' }}>
-                            None
+                            Keine
                           </span>
                         ) : (
                           <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -562,8 +640,8 @@ export const BatchQuerySelection: React.FC = () => {
                                   padding: '2px 8px',
                                   borderRadius: '12px',
                                   fontSize: '12px',
-                                  background: '#e3f2fd',
-                                  color: '#1976d2',
+                                  background: TABLE_COLORS.tagBg,
+                                  color: TABLE_COLORS.tagText,
                                   whiteSpace: 'nowrap'
                                 }}
                               >
@@ -576,10 +654,29 @@ export const BatchQuerySelection: React.FC = () => {
                       <td style={{
                         padding: '12px',
                         textAlign: 'center',
+                        fontWeight: 'bold',
+                        color: q.evaluation_count > 0 ? TABLE_COLORS.scoreHigh : '#999'
+                      }}>
+                        {q.evaluation_count}
+                      </td>
+                      <td style={{
+                        padding: '12px',
+                        textAlign: 'center',
                         fontSize: '12px',
                         color: '#666'
                       }}>
                         {new Date(q.creation_date).toLocaleDateString()}
+                      </td>
+                      <td style={{
+                        padding: '12px',
+                        textAlign: 'center',
+                        fontSize: '12px',
+                        color: '#666'
+                      }}>
+                        {q.latest_evaluation_date
+                          ? new Date(q.latest_evaluation_date).toLocaleDateString()
+                          : <span style={{ color: '#999' }}>-</span>
+                        }
                       </td>
                     </tr>
                   ))}
@@ -588,50 +685,26 @@ export const BatchQuerySelection: React.FC = () => {
             </div>
 
             {/* Pagination */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '15px',
-              background: '#f8f9fa',
-              borderRadius: '8px'
-            }}>
-              <div>
-                Showing {questions.length} of {total} questions
-                (Page {page} of {totalPages})
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1 || loading}
-                  style={{ padding: '8px 16px' }}
-                >
-                  ← Previous
-                </button>
-                <span style={{
-                  padding: '8px 16px',
-                  background: 'white',
-                  border: '1px solid #dee2e6',
-                  borderRadius: '4px'
-                }}>
-                  Page {page}
-                </span>
-                <button
-                  onClick={() => setPage(p => p + 1)}
-                  disabled={page === totalPages || loading}
-                  style={{ padding: '8px 16px' }}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              totalItems={total}
+              totalPages={totalPages}
+              hasNext={page < totalPages}
+              hasPrev={page > 1}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                setPage(1)
+              }}
+              pageSizeOptions={TABLE_PAGE_SIZES}
+            />
           </>
         )}
 
         {error && (
           <div className="error" style={{ marginTop: '20px' }}>
-            <strong>Error:</strong> {error}
+            <strong>Fehler:</strong> {error}
             <button
               onClick={() => setError(null)}
               style={{

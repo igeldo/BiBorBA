@@ -1,6 +1,4 @@
-# core/graph/nodes/rewriter.py
 from typing import Dict, Any
-import time
 import logging
 
 from langchain_core.output_parsers import StrOutputParser
@@ -8,7 +6,6 @@ from langchain_core.output_parsers import StrOutputParser
 logger = logging.getLogger(__name__)
 
 from app.config import settings
-from app.utils.timing import TimingContext
 
 
 def create_rewriter_node(model_manager, prompt_manager):
@@ -32,14 +29,12 @@ def create_rewriter_node(model_manager, prompt_manager):
         transform_attempts = state.get("transform_attempts", 0) + 1
         total_iterations = state.get("total_iterations", 0) + 1
 
-        with TimingContext("Get rewriter model and prompt", logger):
-            llm = model_manager.get_chat_model("rewriter", **model_config)
-            prompt = prompt_manager.get_question_rewriter_prompt()
+        llm = model_manager.get_chat_model("rewriter", **model_config)
+        prompt = prompt_manager.get_question_rewriter_prompt()
 
         question_rewriter = prompt | llm | StrOutputParser()
 
-        with TimingContext(f"LLM call: Rewrite query (attempt {transform_attempts})", logger):
-            better_question = question_rewriter.invoke({"question": question})
+        better_question = question_rewriter.invoke({"question": question})
 
         logger.info(f"Transform attempt {transform_attempts}/{settings.max_transform_retries}")
         logger.info(f"Original: {question}")
@@ -48,7 +43,7 @@ def create_rewriter_node(model_manager, prompt_manager):
         return {
             "documents": documents,
             "question": better_question,
-            "original_question": state.get("original_question", state["question"]),  # Preserve original
+            "original_question": state.get("original_question", state["question"]),
             "generation": state.get("generation", ""),
             "model_config": model_config,
             "collection_ids": state.get("collection_ids", []),

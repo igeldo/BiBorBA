@@ -1,19 +1,21 @@
 [project]
 name = "langgrapharag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Agentic RAG system with LangGraph comparing Pure LLM, Simple RAG, and Adaptive RAG architectures"
+authors = [
+    { name = "Philipp Bornefeld" },
+]
+license = { text = "MIT" }
 requires-python = ">=3.9"
 dependencies = [
     "bert-score~=0.3.13",
     "chromadb~=1.1.0",
-    "dotenv~=0.9.9",
     "fastapi~=0.104.1",
     "langchain~=0.3.27",
     "langchain-chroma~=0.2.6",
     "langchain-community~=0.3.29",
     "langchain-core~=0.3.76",
     "langchain-ollama~=0.3.8",
-    "langchain-openai~=0.3.33",
     "langchain-text-splitters~=0.3.11",
     "langgraph~=0.4.10",
     "psycopg2-binary>=2.9.11",
@@ -25,10 +27,16 @@ dependencies = [
     "requests~=2.32.5",
     "sqlalchemy~=2.0.43",
     "transformers~=4.56.1",
+    "tiktoken>=0.7.0",
     "uvicorn~=0.24.0",
     "pytest~=8.3.4",
     "reportlab~=4.2.5",
     "httpx<0.28.0",
+    "pandas>=2.3.3",
+    "numpy>=2.0.2",
+    "scipy>=1.13.1",
+    "matplotlib>=3.9.4",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { apiService } from '../../services/api'
 import type { BatchQueryJobStatus } from '../../types'
-import { getBertScoreColor } from '../../utils/formatting'
 import { GraphTrace } from '../GraphTrace'
+import { StackOverflowLink } from '../table'
+import { TABLE_COLORS } from '../../theme/tableConstants'
 
 interface BatchQueryProgressProps {
   jobId: string
@@ -62,7 +63,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
     return (
       <div className="query-section" style={{ textAlign: 'center', padding: '40px' }}>
         <span className="loading"></span>
-        <p>Loading job status...</p>
+        <p>Job-Status wird geladen...</p>
       </div>
     )
   }
@@ -75,7 +76,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
         </div>
         {onBack && (
           <button onClick={() => onBack('failed')} style={{ marginTop: '20px' }}>
-            ← Back to Selection
+            ← Zurück zur Auswahl
           </button>
         )}
       </div>
@@ -88,20 +89,20 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'running': return '#007bff'
-      case 'completed': return '#28a745'
+      case 'running': return TABLE_COLORS.buttonPrimary
+      case 'completed': return TABLE_COLORS.scoreHigh
       case 'failed': return '#dc3545'
-      case 'cancelled': return '#6c757d'
-      default: return '#6c757d'
+      case 'cancelled': return TABLE_COLORS.buttonSecondary
+      default: return TABLE_COLORS.buttonSecondary
     }
   }
 
   const getResultBadgeColor = (status: string) => {
     switch (status) {
-      case 'success': return '#28a745'
+      case 'success': return TABLE_COLORS.scoreHigh
       case 'failed': return '#dc3545'
       case 'skipped': return '#ffc107'
-      default: return '#6c757d'
+      default: return TABLE_COLORS.buttonSecondary
     }
   }
 
@@ -117,7 +118,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
   }
 
   const downloadCSV = () => {
-    const headers = ['Question ID', 'Title', 'Status', 'BERT F1', 'BERT Precision', 'BERT Recall', 'Processing Time (ms)']
+    const headers = ['Question ID', 'Title', 'Status', 'BERT F1', 'BERT Precision', 'BERT Recall', 'LLM Correctness', 'Processing Time (ms)']
     const rows = job.results.map(r => [
       r.question_id,
       `"${r.question_title.replace(/"/g, '""')}"`,
@@ -125,6 +126,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
       r.bert_score?.f1.toFixed(3) || '',
       r.bert_score?.precision.toFixed(3) || '',
       r.bert_score?.recall.toFixed(3) || '',
+      r.llm_correctness?.score.toFixed(3) || '',
       r.processing_time_ms || ''
     ])
 
@@ -153,8 +155,8 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
           marginBottom: '20px'
         }}>
           <div>
-            <h2>📊 Batch Query Progress</h2>
-            <p style={{ color: '#666', fontSize: '14px', margin: '5px 0' }}>Job ID: {jobId}</p>
+            <h2>📊 Batch-Abfrage-Fortschritt</h2>
+            <p style={{ color: '#666', fontSize: '14px', margin: '5px 0' }}>Job-ID: {jobId}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span
@@ -197,8 +199,8 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
               fontSize: '14px',
               fontWeight: 500
             }}>
-              <span>Progress</span>
-              <span>{job.progress.processed} / {job.progress.total_questions} questions</span>
+              <span>Fortschritt</span>
+              <span>{job.progress.processed} / {job.progress.total_questions} Fragen</span>
             </div>
             <div style={{
               width: '100%',
@@ -239,7 +241,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                 {job.progress.successful}
               </div>
               <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                ✓ Successful
+                ✓ Erfolgreich
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
@@ -247,7 +249,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                 {job.progress.failed}
               </div>
               <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                ✗ Failed
+                ✗ Fehlgeschlagen
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
@@ -255,7 +257,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                 {job.progress.skipped}
               </div>
               <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-                ⊘ Skipped
+                ⊘ Übersprungen
               </div>
             </div>
           </div>
@@ -270,7 +272,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
               borderLeft: '4px solid #007bff'
             }}>
               <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>
-                Currently processing:
+                Wird gerade verarbeitet:
               </div>
               <div style={{ fontWeight: 500 }}>
                 {job.progress.current_question_title}
@@ -292,14 +294,14 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
             alignItems: 'center',
             marginBottom: '20px'
           }}>
-            <h3 style={{ margin: 0 }}>Results ({job.results.length})</h3>
+            <h3 style={{ margin: 0 }}>Ergebnisse ({job.results.length})</h3>
             {job.status === 'completed' && job.results.length > 0 && (
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={downloadCSV} style={{ background: '#28a745' }}>
-                  Download CSV
+                  CSV herunterladen
                 </button>
                 <button onClick={downloadResults} style={{ background: '#007bff' }}>
-                  Download JSON
+                  JSON herunterladen
                 </button>
               </div>
             )}
@@ -307,7 +309,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
 
           {job.results.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
-              <p>No results yet. Processing will begin shortly...</p>
+              <p>Noch keine Ergebnisse. Verarbeitung beginnt in Kürze...</p>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
@@ -319,13 +321,14 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                 <thead>
                   <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
                     <th style={{ padding: '12px', textAlign: 'center', width: '40px' }}>▼</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Question</th>
+                    <th style={{ padding: '12px', textAlign: 'left' }}>Frage</th>
                     <th style={{ padding: '12px', textAlign: 'center' }}>Status</th>
                     <th style={{ padding: '12px', textAlign: 'center' }}>BERT F1</th>
                     <th style={{ padding: '12px', textAlign: 'center' }}>Precision</th>
                     <th style={{ padding: '12px', textAlign: 'center' }}>Recall</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Time (ms)</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Actions</th>
+                    <th style={{ padding: '12px', textAlign: 'center' }}>LLM Corr.</th>
+                    <th style={{ padding: '12px', textAlign: 'center' }}>Zeit (ms)</th>
+                    <th style={{ padding: '12px', textAlign: 'center' }}>Aktionen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -354,14 +357,13 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                         <td style={{ padding: '12px', maxWidth: '400px' }}>
                           <div style={{ fontWeight: 500, marginBottom: '4px' }}>
                             {result.stack_overflow_id ? (
-                              <a
-                                href={`https://stackoverflow.com/questions/${result.stack_overflow_id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: '#007bff', textDecoration: 'none' }}
-                              >
-                                {result.question_title} ({result.graph_type})
-                              </a>
+                              <>
+                                <StackOverflowLink
+                                  stackOverflowId={result.stack_overflow_id}
+                                  title={result.question_title}
+                                />
+                                {' '}({result.graph_type})
+                              </>
                             ) : `${result.question_title} (${result.graph_type})`}
                           </div>
                           {result.error_message && (
@@ -385,13 +387,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                         </td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {result.bert_score ? (
-                            <span
-                              style={{
-                                fontWeight: 'bold',
-                                fontSize: '16px',
-                                color: getBertScoreColor(result.bert_score.f1)
-                              }}
-                            >
+                            <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
                               {result.bert_score.f1.toFixed(3)}
                             </span>
                           ) : (
@@ -400,12 +396,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                         </td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {result.bert_score ? (
-                            <span
-                              style={{
-                                fontWeight: 'bold',
-                                color: getBertScoreColor(result.bert_score.precision)
-                              }}
-                            >
+                            <span style={{ fontWeight: 'bold' }}>
                               {result.bert_score.precision.toFixed(3)}
                             </span>
                           ) : (
@@ -414,13 +405,17 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                         </td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {result.bert_score ? (
-                            <span
-                              style={{
-                                fontWeight: 'bold',
-                                color: getBertScoreColor(result.bert_score.recall)
-                              }}
-                            >
+                            <span style={{ fontWeight: 'bold' }}>
                               {result.bert_score.recall.toFixed(3)}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#999' }}>-</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {result.llm_correctness ? (
+                            <span style={{ fontWeight: 'bold', fontSize: '16px' }}>
+                              {result.llm_correctness.score.toFixed(3)}
                             </span>
                           ) : (
                             <span style={{ color: '#999' }}>-</span>
@@ -434,7 +429,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                             <button
                               onClick={(e) => {
                                 e.stopPropagation() // Prevent row toggle
-                                alert(`Evaluation ID: ${result.evaluation_id}`)
+                                alert(`Evaluierungs-ID: ${result.evaluation_id}`)
                               }}
                               style={{
                                 padding: '4px 12px',
@@ -472,22 +467,48 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
                                   <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
                                     <div>
                                       <span style={{ color: '#666', fontSize: '12px' }}>F1: </span>
-                                      <span style={{ fontWeight: 'bold', color: getBertScoreColor(result.bert_score.f1) }}>
+                                      <span style={{ fontWeight: 'bold' }}>
                                         {result.bert_score.f1.toFixed(4)}
                                       </span>
                                     </div>
                                     <div>
                                       <span style={{ color: '#666', fontSize: '12px' }}>Precision: </span>
-                                      <span style={{ fontWeight: 'bold', color: getBertScoreColor(result.bert_score.precision) }}>
+                                      <span style={{ fontWeight: 'bold' }}>
                                         {result.bert_score.precision.toFixed(4)}
                                       </span>
                                     </div>
                                     <div>
                                       <span style={{ color: '#666', fontSize: '12px' }}>Recall: </span>
-                                      <span style={{ fontWeight: 'bold', color: getBertScoreColor(result.bert_score.recall) }}>
+                                      <span style={{ fontWeight: 'bold' }}>
                                         {result.bert_score.recall.toFixed(4)}
                                       </span>
                                     </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* LLM Correctness */}
+                              {result.llm_correctness && (
+                                <div style={{
+                                  padding: '12px 16px',
+                                  backgroundColor: '#e3f2fd',
+                                  borderRadius: '4px',
+                                  border: '1px solid #bbdefb'
+                                }}>
+                                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#1565c0' }}>
+                                    LLM Correctness
+                                  </div>
+                                  <div>
+                                    <span style={{ color: '#666', fontSize: '12px' }}>Score: </span>
+                                    <span style={{ fontWeight: 'bold' }}>
+                                      {result.llm_correctness.score.toFixed(4)}
+                                    </span>
+                                    <span style={{ color: '#666', marginLeft: '8px' }}>
+                                      ({(result.llm_correctness.score * 4 + 1).toFixed(0)}/5)
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                    Model: {result.llm_correctness.model}
                                   </div>
                                 </div>
                               )}
@@ -711,7 +732,7 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
         {/* Error Display */}
         {job.error && (
           <div className="error" style={{ marginTop: '20px' }}>
-            <strong>Job Error:</strong> {job.error}
+            <strong>Job-Fehler:</strong> {job.error}
           </div>
         )}
 
@@ -725,11 +746,11 @@ export const BatchQueryProgress: React.FC<BatchQueryProgressProps> = ({ jobId, o
           color: '#666'
         }}>
           <div style={{ marginBottom: '5px' }}>
-            <strong>Started:</strong> {new Date(job.started_at).toLocaleString()}
+            <strong>Gestartet:</strong> {new Date(job.started_at).toLocaleString()}
           </div>
           {job.completed_at && (
             <div>
-              <strong>Completed:</strong> {new Date(job.completed_at).toLocaleString()}
+              <strong>Abgeschlossen:</strong> {new Date(job.completed_at).toLocaleString()}
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-# core/model_manager.py
+import json
 import logging
 from functools import lru_cache
 from typing import Dict, Optional, Any
@@ -28,15 +28,20 @@ class ModelManager:
             raise ValueError(f"Model type '{model_type}' not configured")
 
         model_name = settings.ollama_models[model_type]
-        cache_key = f"{model_name}_{temperature}_{hash(str(kwargs))}"
+
+        cache_kwargs = {k: v for k, v in kwargs.items() if k != 'streaming'}
+        sorted_kwargs = json.dumps(cache_kwargs, sort_keys=True) if cache_kwargs else ""
+        cache_key = f"{model_name}_{temperature}_{sorted_kwargs}"
 
         if cache_key not in self._chat_models:
-            logger.info(f"Creating new chat model: {model_name}")
+            logger.info(f"Creating new chat model: {model_name} (cache_key: {cache_key})")
+            clean_kwargs = {k: v for k, v in kwargs.items() if k != 'streaming'}
             self._chat_models[cache_key] = ChatOllama(
                 model=model_name,
                 base_url=settings.ollama_base_url,
                 temperature=temperature,
-                **kwargs
+                **clean_kwargs,
+                streaming=False
             )
 
         return self._chat_models[cache_key]
@@ -72,6 +77,14 @@ class ModelManager:
 
         return base_model
 
+    def reset_chat_model(self, model_type: str) -> None:
+        """Invalidate cached models for a given model type (e.g. on connection errors)"""
+        model_name = settings.ollama_models.get(model_type)
+        if model_name:
+            keys_to_remove = [k for k in self._chat_models if k.startswith(model_name)]
+            for key in keys_to_remove:
+                del self._chat_models[key]
+
     def list_available_models(self) -> Dict[str, str]:
         """List all configured models"""
         return settings.ollama_models.copy()
@@ -84,11 +97,9 @@ class ModelManager:
             try:
                 if model_type == "embedding":
                     model = self.get_embeddings_model()
-                    # Simple test embedding
                     model.embed_query("test")
                 else:
                     model = self.get_chat_model(model_type)
-                    # Simple test message
                     model.invoke("Hello")
 
                 health_status[f"{model_type}_{model_name}"] = True

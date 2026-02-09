@@ -1,10 +1,10 @@
 """
-Tests für CollectionManager
+Unit tests for CollectionManager service.
 
-Testet Kernfunktionalität:
-- Collection CRUD
-- Fragen zu Collection hinzufügen/entfernen
-- PDF-Dokumente zu Collection hinzufügen
+Tests the core functionality:
+- Collection CRUD operations
+- Adding/removing questions to collections
+- Adding PDF documents to collections
 """
 import pytest
 from datetime import datetime
@@ -14,10 +14,21 @@ from app.database import CollectionConfiguration, CollectionQuestion, Collection
 
 
 class TestCollectionCRUD:
-    """Test Collection CRUD"""
+    """Tests for Collection Create, Read, Update, Delete operations."""
 
     def test_create_collection(self, db_session):
-        """Collection erstellen"""
+        """
+        Test creating a new collection with valid parameters.
+
+        Assume:
+            - Database session is available
+            - No collection with name "SQL Basics" exists
+
+        Expect:
+            - Collection is created with an auto-generated ID
+            - Collection name matches input
+            - Collection type matches input
+        """
         manager = CollectionManager(db=db_session)
 
         collection = manager.create_collection(
@@ -31,7 +42,16 @@ class TestCollectionCRUD:
         assert collection.collection_type == "stackoverflow"
 
     def test_duplicate_name_raises_error(self, db_session):
-        """Doppelter Name wirft ValueError"""
+        """
+        Test that creating a collection with a duplicate name raises ValueError.
+
+        Assume:
+            - A collection named "SQL Basics" already exists
+
+        Expect:
+            - ValueError is raised
+            - Error message contains "already exists"
+        """
         manager = CollectionManager(db=db_session)
         manager.create_collection(name="SQL Basics")
 
@@ -41,7 +61,16 @@ class TestCollectionCRUD:
         assert "already exists" in str(excinfo.value)
 
     def test_get_collection(self, db_session):
-        """Collection abrufen"""
+        """
+        Test retrieving a collection by ID.
+
+        Assume:
+            - A collection has been created and its ID is known
+
+        Expect:
+            - Retrieved collection has the same ID
+            - Retrieved collection has the same name
+        """
         manager = CollectionManager(db=db_session)
         created = manager.create_collection(name="Test")
 
@@ -51,12 +80,29 @@ class TestCollectionCRUD:
         assert retrieved.name == "Test"
 
     def test_get_nonexistent_returns_none(self, db_session):
-        """Nicht existierende Collection -> None"""
+        """
+        Test that retrieving a non-existent collection returns None.
+
+        Assume:
+            - No collection with ID 99999 exists
+
+        Expect:
+            - get_collection returns None
+        """
         manager = CollectionManager(db=db_session)
         assert manager.get_collection(99999) is None
 
     def test_delete_collection(self, db_session):
-        """Collection löschen"""
+        """
+        Test deleting a collection.
+
+        Assume:
+            - A collection exists and its ID is known
+
+        Expect:
+            - delete_collection returns True
+            - Collection is no longer retrievable
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(name="To Delete")
 
@@ -67,10 +113,20 @@ class TestCollectionCRUD:
 
 
 class TestQuestionManagement:
-    """Test Fragen-Verwaltung"""
+    """Tests for adding and removing questions from collections."""
 
     def test_add_questions(self, db_session, sample_questions):
-        """Fragen zu Collection hinzufügen"""
+        """
+        Test adding questions to a collection.
+
+        Assume:
+            - A StackOverflow collection exists
+            - Sample questions are available in database
+
+        Expect:
+            - add_questions_to_collection returns count of added questions
+            - Collection's question_count is updated
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(name="SQL Collection")
         question_ids = [q.stack_overflow_id for q in sample_questions[:3]]
@@ -85,7 +141,16 @@ class TestQuestionManagement:
         assert collection.question_count == 3
 
     def test_add_duplicate_questions_skipped(self, db_session, sample_questions):
-        """Duplikate werden übersprungen"""
+        """
+        Test that duplicate questions are skipped when adding.
+
+        Assume:
+            - A collection with 2 questions exists
+            - Trying to add 2 questions where one is already in collection
+
+        Expect:
+            - Only the new question is added (count = 1)
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(name="SQL Collection")
         question_ids = [sample_questions[0].stack_overflow_id, sample_questions[1].stack_overflow_id]
@@ -93,13 +158,22 @@ class TestQuestionManagement:
         manager.add_questions_to_collection(collection.id, question_ids)
         count = manager.add_questions_to_collection(
             collection.id,
-            [sample_questions[0].stack_overflow_id, sample_questions[2].stack_overflow_id]  # 0 ist Duplikat
+            [sample_questions[0].stack_overflow_id, sample_questions[2].stack_overflow_id]
         )
 
-        assert count == 1  # Nur 1 neu
+        assert count == 1
 
     def test_remove_questions(self, db_session, sample_questions):
-        """Fragen entfernen"""
+        """
+        Test removing questions from a collection.
+
+        Assume:
+            - A collection with 4 questions exists
+
+        Expect:
+            - remove_questions_from_collection returns count of removed questions
+            - Collection's question_count is reduced accordingly
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(name="SQL Collection")
         question_ids = [q.stack_overflow_id for q in sample_questions[:4]]
@@ -116,10 +190,19 @@ class TestQuestionManagement:
 
 
 class TestDocumentManagement:
-    """Test PDF-Dokument-Verwaltung"""
+    """Tests for PDF document management in collections."""
 
     def test_add_documents_to_pdf_collection(self, db_session):
-        """Dokumente zu PDF-Collection hinzufügen"""
+        """
+        Test adding documents to a PDF-type collection.
+
+        Assume:
+            - A PDF-type collection exists
+
+        Expect:
+            - add_documents_to_collection returns count of added documents
+            - Collection's question_count reflects added documents
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(name="SQL Docs", collection_type="pdf")
 
@@ -133,7 +216,16 @@ class TestDocumentManagement:
         assert collection.question_count == 2
 
     def test_add_documents_to_stackoverflow_raises_error(self, db_session):
-        """Dokumente zu StackOverflow-Collection -> ValueError"""
+        """
+        Test that adding documents to a StackOverflow collection raises ValueError.
+
+        Assume:
+            - A StackOverflow-type collection exists
+
+        Expect:
+            - ValueError is raised
+            - Error message contains "not a PDF collection"
+        """
         manager = CollectionManager(db=db_session)
         collection = manager.create_collection(
             name="SQL Questions",

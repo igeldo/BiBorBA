@@ -1,18 +1,17 @@
-# app / services / stackoverflow_scraper.py
 """
 Stack Overflow Scraper Service
 Handles fetching and storing questions and answers from Stack Overflow API
 """
 
-import requests
-import time
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Callable, Any
+
+import requests
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import SessionLocal, SOQuestion, SOAnswer
 from app.utils.text_cleaning import clean_html
 
@@ -29,7 +28,7 @@ class StackOverflowScraper:
     RETRY_DELAY = 1.0  # seconds before retry after error
 
     def __init__(self):
-        self.api_key = None  # API only needed if more then 300 request per day
+        self.api_key = None  # API Key only needed if more then 300 request per day
         self.session = requests.Session()
         if self.api_key:
             logger.info("StackOverflow scraper initialized with API key (using main database)")
@@ -44,7 +43,6 @@ class StackOverflowScraper:
         """Make API request with error handling and rate limiting"""
         url = f"{self.BASE_URL}/{endpoint}"
 
-        # Default parameters
         default_params = {
             "site": "stackoverflow",
             "order": "desc",
@@ -145,7 +143,6 @@ class StackOverflowScraper:
                     question_data = self._parse_question_data(question_raw)
                     questions_to_store.append(question_data)
 
-                    # Store question using ORM (handles UPSERT automatically)
                     stored_question = self._store_question_orm(db, question_data, stats)
 
                     if stored_question:
@@ -163,7 +160,6 @@ class StackOverflowScraper:
 
             logger.info(f"Stored {stats['questions_stored']} questions")
 
-            # Extract accepted_answer_ids from stored questions
             accepted_answer_ids = [
                 q["accepted_answer_id"] for q in questions_to_store
                 if q.get("accepted_answer_id")
@@ -172,11 +168,9 @@ class StackOverflowScraper:
             if accepted_answer_ids:
                 logger.info(f"Found {len(accepted_answer_ids)} questions with accepted answers")
 
-                # Fetch accepted answers specifically
                 accepted_answers_data = self._fetch_accepted_answers(accepted_answer_ids)
                 logger.info(f"Fetched {len(accepted_answers_data)} accepted answers from API")
 
-                # Store accepted answers FIRST (before fetching all answers)
                 for answer_raw in accepted_answers_data:
                     try:
                         answer_data = self._parse_answer_data(answer_raw)
@@ -189,7 +183,6 @@ class StackOverflowScraper:
                         logger.error(f"Error processing accepted answer: {e}")
                         stats["errors"] += 1
 
-            # Fetch and store all other answers
             if question_ids:
                 logger.info(f"Fetching answers for {len(question_ids)} questions")
 
@@ -202,7 +195,6 @@ class StackOverflowScraper:
                 for answer_raw in answers_data:
                     try:
                         answer_data = self._parse_answer_data(answer_raw)
-                        # Store answer using ORM (handles UPSERT automatically)
                         self._store_answer_orm(db, answer_raw, answer_data, stats)
 
                         if progress_callback:
@@ -261,12 +253,11 @@ class StackOverflowScraper:
 
             logger.info(f"Fetched page {page}: {len(questions)} questions (total: {len(all_questions)})")
 
-            # Check if we have more pages
             if not data.get("has_more", False):
                 break
 
             page += 1
-            time.sleep(self.RATE_LIMIT_DELAY)  # Rate limiting
+            time.sleep(self.RATE_LIMIT_DELAY)
 
             if pages_fetched >= max_pages:
                 logger.warning(f"Reached page limit ({max_pages}). Fetched {len(all_questions)} of {count} requested questions.")
@@ -298,7 +289,7 @@ class StackOverflowScraper:
                 logger.info(f"Fetched {len(answers)} answers for batch of {len(batch)} questions")
 
             if len(question_ids) > 100:
-                time.sleep(self.RETRY_DELAY)  # Rate limiting between batches
+                time.sleep(self.RETRY_DELAY)
 
         return all_answers
 
@@ -389,12 +380,7 @@ class StackOverflowScraper:
             SOQuestion object if stored successfully, None otherwise
         """
         try:
-            # Create question object
             question = SOQuestion(**question_data)
-
-            # Merge: SQLAlchemy checks PRIMARY KEY (stack_overflow_id)
-            # - If exists: UPDATE
-            # - If new: INSERT
             merged_question = db.merge(question)
             db.commit()
             db.refresh(merged_question)
@@ -430,7 +416,6 @@ class StackOverflowScraper:
             True if stored successfully, False otherwise
         """
         try:
-            # Find question using ORM
             question = db.query(SOQuestion).filter(
                 SOQuestion.stack_overflow_id == answer_raw.get("question_id")
             ).first()
@@ -443,10 +428,9 @@ class StackOverflowScraper:
                 stats["answers_skipped"] += 1
                 return False
 
-            # Create answer object with FK to question
             answer = SOAnswer(
                 stack_overflow_id=answer_data["stack_overflow_id"],
-                question_stack_overflow_id=question.stack_overflow_id,  # NEW FK name!
+                question_stack_overflow_id=question.stack_overflow_id,
                 body=answer_data["body"],
                 score=answer_data["score"],
                 creation_date=answer_data["creation_date"],
@@ -456,9 +440,6 @@ class StackOverflowScraper:
                 is_accepted=answer_data["is_accepted"]
             )
 
-            # Merge: SQLAlchemy checks PRIMARY KEY (stack_overflow_id)
-            # - If exists: UPDATE
-            # - If new: INSERT
             merged_answer = db.merge(answer)
             db.commit()
             db.refresh(merged_answer)
@@ -507,22 +488,18 @@ class StackOverflowScraper:
         db = self._get_so_db()
 
         try:
-            # Count queries using ORM
             total_questions = db.query(SOQuestion).count()
             total_answers = db.query(SOAnswer).count()
             accepted_answers = db.query(SOAnswer).filter(SOAnswer.is_accepted == True).count()
 
-            # Recent activity (last 7 days)
             seven_days_ago = datetime.utcnow() - timedelta(days=7)
             recent_questions = db.query(SOQuestion).filter(
                 SOQuestion.created_at >= seven_days_ago
             ).count()
 
-            # Average scores using ORM
             avg_question_score = db.query(func.avg(SOQuestion.score)).scalar()
             avg_answer_score = db.query(func.avg(SOAnswer.score)).scalar()
 
-            # Top tags - processed in Python to avoid PostgreSQL-specific functions
             top_tags_dict: Dict[str, int] = {}
             all_tags = db.query(SOQuestion.tags).filter(SOQuestion.tags.isnot(None)).all()
 
@@ -533,7 +510,6 @@ class StackOverflowScraper:
                         if tag:
                             top_tags_dict[tag] = top_tags_dict.get(tag, 0) + 1
 
-            # Sort by count and take top 10
             top_tags = [
                 {"tag": tag, "count": count}
                 for tag, count in sorted(
@@ -562,7 +538,6 @@ class StackOverflowScraper:
             db.close()
 
 
-# Global instance
 _stackoverflow_scraper = None
 
 

@@ -13,9 +13,9 @@ export const GraphTrace: React.FC<GraphTraceProps> = ({ graphTrace, nodeTimings 
 
   return (
     <div className="graph-trace-section">
-      <h3>🔍 Processing Pipeline</h3>
+      <h3>🔍 Verarbeitungs-Pipeline</h3>
       <p className="trace-description">
-        The system executed the following steps to generate this answer:
+        Das System hat folgende Schritte ausgeführt, um diese Antwort zu generieren:
       </p>
       <div className="graph-trace">
         {graphTrace.map((node, index) => (

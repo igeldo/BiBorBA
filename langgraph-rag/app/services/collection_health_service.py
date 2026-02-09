@@ -1,6 +1,6 @@
 """
-Service für Collection Health Checks
-Validiert, ob Chroma Collections für DB-Einträge existieren
+Service for collection health checks.
+Validates whether Chroma collections exist for DB entries.
 """
 
 import logging
@@ -15,17 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 class CollectionHealthService:
-    """Service zur Validierung von Collections"""
+    """Service for validating collections"""
 
     def __init__(self):
         self.embedding_service = get_embedding_service()
 
     def check_collection_health(self, collection_id: int, db: Session) -> Dict[str, Any]:
         """
-        Prüft, ob Chroma Collection für DB-Eintrag existiert
+        Check if Chroma collection exists for DB entry
 
         Args:
-            collection_id: ID der Collection
+            collection_id: Collection ID
             db: Database session
 
         Returns:
@@ -38,21 +38,18 @@ class CollectionHealthService:
         if not collection:
             return {"exists": False, "needs_rebuild": True, "document_count": 0}
 
-        # Prüfe Chroma Collection
         collection_name = f"custom_collection_{collection_id}"
 
         try:
             info = self.embedding_service.get_collection_info(collection_name)
 
             if info and info.get("document_count", 0) > 0:
-                # Collection existiert in Chroma
                 return {
                     "exists": True,
                     "needs_rebuild": False,
                     "document_count": info.get("document_count", 0)
                 }
             else:
-                # Collection fehlt oder ist leer
                 return {
                     "exists": False,
                     "needs_rebuild": True,
@@ -69,7 +66,7 @@ class CollectionHealthService:
 
     def check_all_collections(self, db: Session) -> Dict[str, Any]:
         """
-        Prüft alle Collections beim App-Start (leichtgewichtig)
+        Check all collections at app startup (lightweight)
 
         Returns:
             Summary mit total, healthy, needs_rebuild
@@ -86,7 +83,6 @@ class CollectionHealthService:
         for collection in collections:
             health = self.check_collection_health(collection.id, db)
 
-            # Update DB
             collection.chroma_exists = health["exists"]
             collection.needs_rebuild = health["needs_rebuild"]
             collection.last_health_check = datetime.utcnow()

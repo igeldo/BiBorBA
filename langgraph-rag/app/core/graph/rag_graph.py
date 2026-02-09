@@ -1,4 +1,3 @@
-# core/graph/adaptive_graph.py
 import logging
 
 from langgraph.constants import END
@@ -18,7 +17,7 @@ logger = logging.getLogger(__name__)
 def create_rag_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> CompiledStateGraph:
     """Create and compile the  RAG graph.
 
-    This is smple RAG Implementation without any agentic Features. It can be used as reference for agentic answers.
+    This is simple RAG Implementation without any agentic Features. It can be used as reference for agentic answers.
     """
 
     model_manager = get_model_manager()

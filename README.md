@@ -10,11 +10,13 @@
 6. [StackOverflow Scraping](#stackoverflow-scraping)
 7. [Nutzung: Einzelabfragen](#nutzung-einzelabfragen)
 8. [Nutzung: Batch-Queries](#nutzung-batch-queries)
-9. [Auswertung und Evaluierung](#auswertung-und-evaluierung)
-10. [Projektstruktur](#projektstruktur)
-11. [Troubleshooting](#troubleshooting)
-12. [Konfiguration](#konfiguration)
-13. [Embedding-Modell wechseln](#embedding-modell-wechseln)
+9. [Fehlende Fragen](#fehlende-fragen)
+10. [Auswertung und Evaluierung](#auswertung-und-evaluierung)
+11. [Statistische Auswertung](#statistische-auswertung)
+12. [Projektstruktur](#projektstruktur)
+13. [Troubleshooting](#troubleshooting)
+14. [Konfiguration](#konfiguration)
+15. [Embedding-Modell wechseln](#embedding-modell-wechseln)
 
 ---
 
@@ -28,26 +30,6 @@ Das System implementiert drei verschiedene RAG-Architekturen:
 | **Simple RAG** | Klassisches RAG: Retrieve → Generate |
 | **Adaptive RAG** | Agentic RAG mit Dokumentenbewertung, Halluzinationserkennung und Query-Rewriting |
 
-### Adaptive RAG Workflow
-
-```
-START → retrieve → grade_documents → [relevant?]
-                                         │
-                    ┌────────────────────┴────────────────────┐
-                    ↓                                          ↓
-              [documents OK]                          [transform_query]
-                    ↓                                          │
-                generate → [hallucination check] ←────────────┘
-                    ↓
-            [answer grading] → END
-```
-
-Der adaptive Graph führt iterative Verbesserungen durch:
-- **Dokumenten-Grading**: Prüft Relevanz der abgerufenen Dokumente
-- **Halluzinations-Check**: Verifiziert, dass Antworten im Kontext verankert sind
-- **Query-Rewriting**: Optimiert Suchanfragen bei schlechten Ergebnissen
-
----
 
 ## Schnellstart (Mac)
 
@@ -88,17 +70,17 @@ Das Skript führt automatisch folgende Schritte aus:
 |----------|---------|----------------------------------------------------------|
 | **Docker & Docker Compose** | Latest | Backend-Services (PostgreSQL, ChromaDB)                  |
 | **Node.js** | 18+ | Frontend-Entwicklung (optional, für lokale Entwicklung)  |
-| **Python** | 3.11+ | Backend-Entwicklung (optional, für lokale Entwicklung)   |
+| **Python** | 3.9+ | Backend-Entwicklung (optional, für lokale Entwicklung)   |
 | **Ollama** | Latest | LLM- und Embedding-Modelle                               |
 
 ### Ollama Modelle
 
-Das System benötigt zwei Ollama-Modelle:
+Das System benötigt mindestens zwei Ollama-Modelle, ein Inferenz und ein Embeddingmodell:
 
-| Funktion | Modell | Installation |
-|----------|--------|--------------|
+| Funktion      | Modell | Installation |
+|---------------|--------|--------------|
 | **Embedding** | `embeddinggemma:latest` | `ollama pull embeddinggemma` |
-| **Chat/Grader/Rewriter** | `gemma3:12b` | `ollama pull gemma3:12b` |
+| **Inferenz**  | `gemma3:12b` | `ollama pull gemma3:12b` |
 
 Die Modelle werden in `langgraph-rag/app/config.py` konfiguriert:
 
@@ -107,7 +89,8 @@ ollama_models: Dict[str, str] = Field(default={
     "embedding": "embeddinggemma:latest",
     "chat": "gemma3:12b",
     "grader": "gemma3:12b",
-    "rewriter": "gemma3:12b"
+    "rewriter": "gemma3:12b",
+    "evaluation": "gemma3:12b"
 })
 ```
 
@@ -268,7 +251,7 @@ chmod +x start.sh stop.sh
 
 ## Kollektionen vorbereiten
 
-Bevor Abfragen durchgeführt werden können, müssen Dokumenten-Kollektionen erstellt und mit Daten gefüllt werden. Die Kollektionsverwaltung erfolgt über den Tab **Collection Management** im Frontend.
+Bevor Abfragen durchgeführt werden können, müssen Dokumenten-Kollektionen erstellt und mit Daten gefüllt werden. Die Kollektionsverwaltung erfolgt über den Tab **Collectionsverwaltung** im Frontend.
 
 ### Kollektionstypen
 
@@ -281,8 +264,8 @@ Das System unterstützt zwei Arten von Kollektionen:
 
 ### Neue Kollektion erstellen
 
-1. Navigiere zum Tab **Collection Management**
-2. Klicke auf **+ New Collection** in der linken Seitenleiste
+1. Navigiere zum Tab **Collectionsverwaltung**
+2. Klicke auf **+ Neue Collection** in der linken Seitenleiste
 3. Fülle das Formular aus:
    - **Collection Name**: Ein aussagekräftiger Name (z.B. "SQL Training Set")
    - **Description**: Optionale Beschreibung
@@ -292,7 +275,7 @@ Das System unterstützt zwei Arten von Kollektionen:
 ### Fragen zu einer StackOverflow-Kollektion hinzufügen
 
 1. Wähle die gewünschte Kollektion in der linken Seitenleiste aus
-2. Wechsle zum Tab **Add Questions**
+2. Wechsle zum Tab **Fragen hinzufügen**
 3. Die Tabelle zeigt alle verfügbaren Fragen, die noch nicht in der Kollektion sind
 4. Nutze die Filter-Optionen:
    - **Filter by Tags**: Komma-getrennte Tags (z.B. "mysql, postgresql")
@@ -300,14 +283,14 @@ Das System unterstützt zwei Arten von Kollektionen:
    - **Sortierung**: Nach Score oder Views sortieren
 5. Wähle Fragen aus:
    - Einzeln per Checkbox
-   - **Select All** für alle auf der aktuellen Seite
-6. Klicke auf **Add Selected (n)** um die Fragen hinzuzufügen
+   - **Alle auswählen** für alle auf der aktuellen Seite
+6. Klicke auf **Ausgewählte hinzufügen (n)** um die Fragen hinzuzufügen
 
 ### PDF-Dokumente hinzufügen
 
 1. Lege PDF-Dateien im Ordner `langgraph-rag/resources/documents/` ab
 2. Wähle eine PDF-Kollektion aus
-3. Wechsle zum Tab **Add Documents**
+3. Wechsle zum Tab **Dokumente hinzufügen**
 4. Alle verfügbaren PDFs werden angezeigt
 5. Wähle die gewünschten Dokumente aus
 6. Klicke auf **Add Selected**
@@ -334,21 +317,21 @@ Die Kollektionsübersicht zeigt:
 
 ## StackOverflow Scraping
 
-Das System kann SQL-bezogene Fragen und Antworten direkt von der StackOverflow API laden. Das Scraping erfolgt über den Tab **Data** im Frontend.
+Das System kann SQL-bezogene Fragen und Antworten direkt von der StackOverflow API laden. Das Scraping erfolgt über den Tab **SO-Datenverwaltung** im Frontend.
 
 ### API-Verbindung testen
 
 Bevor mit dem Scraping begonnen wird, sollte die API-Verbindung getestet werden:
 
-1. Navigiere zum Tab **Data** (Stackoverflow Data Management)
-2. Klicke auf **Test API Connection** (grüner Button)
+1. Navigiere zum Tab **SO-Datenverwaltung**
+2. Klicke auf **API-Verbindung testen** (grüner Button)
 3. Bei erfolgreicher Verbindung wird angezeigt:
    - **API Status**: Connected
    - **Quota Remaining**: Verbleibende API-Aufrufe (StackOverflow limitiert auf 300/Tag ohne API-Key)
 
 ### Scraping starten
 
-1. Im Tab **Data** unter **Scrape New Data**:
+1. Im Tab **SO-Datenverwaltung** unter **Neue Daten abrufen**:
 2. Konfiguriere die Parameter:
    - **Count (1-1000)**: Anzahl der zu ladenden Fragen (z.B. 100)
    - **Days Back (1-3650)**: Zeitraum in Tagen (z.B. 365 für das letzte Jahr)
@@ -356,7 +339,7 @@ Bevor mit dem Scraping begonnen wird, sollte die API-Verbindung getestet werden:
    - **Tags**: Komma-getrennte Tags (z.B. "sql, mysql, postgresql")
    - **Start Page**: Startseite für Fortsetzung eines vorherigen Scrapings (100 Fragen pro Seite)
    - **Only accepted answers**: Checkbox für Fragen mit akzeptierter Antwort
-3. Klicke auf **Start Scraping** (orangefarbener Button)
+3. Klicke auf **Abruf starten** (orangefarbener Button)
 
 ### Scraping-Fortschritt
 
@@ -370,7 +353,7 @@ Nach Abschluss erscheint eine grüne Erfolgsmeldung mit der Anzahl gespeicherter
 
 ### Gespeicherte Fragen durchsuchen
 
-Im Bereich **Browse Questions** können alle gespeicherten Fragen durchsucht werden:
+Im Bereich **Fragen durchsuchen** können alle gespeicherten Fragen durchsucht werden:
 
 1. **Filter by Tags**: Nach Tags filtern
 2. **Min Score**: Mindest-Score
@@ -403,11 +386,11 @@ Im oberen Bereich werden Gesamtstatistiken angezeigt:
 
 ## Nutzung: Einzelabfragen
 
-Einzelabfragen werden über den Tab **Query** im Frontend durchgeführt.
+Einzelabfragen werden über den Tab **Abfragemodus** im Frontend durchgeführt.
 
 ### Abfrage stellen
 
-1. Navigiere zum Tab **Query** (Standard-Ansicht)
+1. Navigiere zum Tab **Abfragemodus** (Standard-Ansicht)
 2. Fülle das Formular aus:
    - **Your Question**: Die SQL-bezogene Frage eingeben
    - **Session ID**: Wird automatisch generiert, kann aber angepasst werden
@@ -431,7 +414,7 @@ Unter dem Graph-Typ-Dropdown können eine oder mehrere Kollektionen ausgewählt 
 
 ### Abfrage absenden
 
-Klicke auf **Submit Query**. Während der Verarbeitung wird ein Ladeindikator angezeigt.
+Klicke auf **Abfrage absenden**. Während der Verarbeitung wird ein Ladeindikator angezeigt.
 
 ### Ergebnis-Anzeige
 
@@ -469,18 +452,18 @@ Die Visualisierung zeigt den Ablauf durch den Graph:
 ### Antwort bewerten
 
 Nach Erhalt einer Antwort:
-1. Klicke auf die Sterne (1-5) im **Rate this answer**-Bereich
+1. Klicke auf die Sterne (1-5) im **Antwort bewerten**-Bereich
 2. Die Bewertung wird automatisch gespeichert
 
 ---
 
 ## Nutzung: Batch-Queries
 
-Batch-Queries ermöglichen die automatisierte Verarbeitung mehrerer StackOverflow-Fragen mit anschließender Evaluierung. Die Batch-Verarbeitung erfolgt über den Tab **Batch** im Frontend.
+Batch-Queries ermöglichen die automatisierte Verarbeitung mehrerer StackOverflow-Fragen mit anschließender Evaluierung. Die Batch-Verarbeitung erfolgt über den Tab **Batch-Verarbeitung** im Frontend.
 
 ### Fragen auswählen
 
-1. Navigiere zum Tab **Batch** (Batch Query Processing)
+1. Navigiere zum Tab **Batch-Verarbeitung**
 2. Die Tabelle zeigt alle verfügbaren StackOverflow-Fragen
 3. Nutze die Filter:
    - **Filter by Tags**: Nach Tags filtern (z.B. "mysql, sql")
@@ -511,7 +494,7 @@ Im Bereich **Graph Types to Execute**:
 
 ### Batch starten
 
-1. Klicke auf **Start Batch (n)**
+1. Klicke auf **Batch starten (n)**
 2. Das System wechselt automatisch zur Fortschrittsansicht
 
 **Hinweis:** Es kann immer nur ein Batch-Job gleichzeitig laufen. Falls bereits ein Job läuft, wird eine Warnung angezeigt.
@@ -539,7 +522,35 @@ Nach Abschluss werden die Ergebnisse tabellarisch angezeigt:
 
 ### Batch abbrechen
 
-Während der Verarbeitung kann der Job über **Cancel Job** abgebrochen werden.
+Während der Verarbeitung kann der Job abgebrochen werden.
+
+---
+
+## Fehlende Fragen
+
+Der Tab **Fehlende Fragen** zeigt alle StackOverflow-Fragen, die noch nicht mit allen ausgewählten Graph-Typen evaluiert wurden. So können gezielt Lücken in der Evaluierung geschlossen werden.
+
+### Übersicht
+
+1. Navigiere zum Tab **Fehlende Fragen**
+2. Die Ansicht zeigt automatisch:
+   - **Zusammenfassung pro Graph-Typ**: Wie viele Fragen für jeden Graph-Typ (Adaptive RAG, Simple RAG, Pure LLM) noch fehlen
+   - **Tabelle**: Alle Fragen, bei denen mindestens eine Evaluation fehlt, mit Markierung welche Graph-Typen noch ausstehen
+
+### Fragen filtern
+
+- **Graph-Typen auswählen**: Nur bestimmte Graph-Typen berücksichtigen
+- **Collections ausschließen**: Fragen aus bestimmten Collections ausschließen (z.B. Training-Set)
+- **Sortierung**: Nach Score, Views oder Datum sortieren
+
+### Batch-Job starten
+
+1. Wähle die gewünschten Fragen aus (standardmäßig sind alle vorausgewählt)
+2. Wähle eine oder mehrere Collections für Retrieval
+3. Lege eine Session-ID fest (wird automatisch generiert)
+4. Klicke auf **Start Batch** um die fehlenden Evaluierungen nachzuholen
+
+**Hinweis:** Es werden nur die Graph-Typen ausgeführt, die für die jeweilige Frage tatsächlich fehlen.
 
 ---
 
@@ -560,11 +571,15 @@ Der BERT-Score misst die semantische Ähnlichkeit zwischen generierter und Refer
 | 0.50 - 0.70 | Mittelmäßig | Teilweise Übereinstimmung |
 | < 0.50 | Niedrig | Geringe Ähnlichkeit zur Referenz |
 
+### LLM Correctness
+
+Zusätzlich zum BERT-Score wird eine LLM-basierte Bewertung der inhaltlichen Korrektheit durchgeführt. Dabei bewertet ein LLM (Evaluierungsmodell) die generierte Antwort im Vergleich zur Referenz-Antwort auf einer Skala von 0 bis 1. Diese Metrik ergänzt den BERT-Score, da sie semantische Korrektheit und nicht nur textuelle Ähnlichkeit misst.
+
 ### Manuelle Bewertung
 
 Bei Einzelabfragen kann jede Antwort manuell bewertet werden:
 
-1. Nach Erhalt einer Antwort im **Query**-Tab
+1. Nach Erhalt einer Antwort im **Abfragemodus**-Tab
 2. Klicke auf die Sterne (1-5) im Bewertungsbereich
 3. Die Bewertung wird automatisch gespeichert und der Session zugeordnet
 
@@ -573,18 +588,18 @@ Bei Einzelabfragen kann jede Antwort manuell bewertet werden:
 Für systematische Evaluierungen wird folgender Workflow empfohlen:
 
 #### 1. Daten sammeln
-- Navigiere zum Tab **Data**
+- Navigiere zum Tab **SO-Datenverwaltung**
 - Scrape StackOverflow-Fragen mit hohem Score (z.B. min_score: 10)
 - Fokussiere auf spezifische Tags (z.B. "mysql", "postgresql")
 
 #### 2. Training Set erstellen
-- Navigiere zum Tab **Collection Management**
+- Navigiere zum Tab **Collectionsverwaltung**
 - Erstelle eine neue Kollektion (z.B. "SQL Training Set")
 - Füge qualitativ hochwertige Fragen hinzu
 - Führe einen Rebuild durch
 
 #### 3. Test Set definieren
-- Im **Batch**-Tab: Aktiviere "Show only questions not in collections"
+- Im **Batch-Verarbeitung**-Tab: Aktiviere "Show only questions not in collections"
 - Diese Fragen dienen als ungesehene Testdaten
 
 #### 4. Batch-Evaluation durchführen
@@ -601,14 +616,42 @@ Nach Abschluss des Batch-Jobs:
 
 ### Vergleich der Graph-Typen
 
-Der Tab **Comparison** ermöglicht den direkten Vergleich der Ergebnisse verschiedener Graph-Typen für dieselbe Frage:
+Der Tab **Antworten-Vergleich** ermöglicht den direkten Vergleich der Ergebnisse verschiedener Graph-Typen für dieselbe Frage:
 
-1. Navigiere zum Tab **Comparison**
+1. Navigiere zum Tab **Antworten-Vergleich**
 2. Wähle eine abgeschlossene Batch-Session
 3. Die Tabelle zeigt für jede Frage:
    - Ergebnisse aller verwendeten Graph-Typen nebeneinander
    - BERT-Scores für jeden Ansatz
+   - LLM Correctness für jeden Ansatz
    - Verarbeitungszeiten
+
+#### Globale Statistiken
+
+Im Antworten-Vergleich werden aggregierte Metriken angezeigt, gruppiert nach:
+- **Graph-Typ**: Vergleich der Leistung zwischen Adaptive RAG, Simple RAG und Pure LLM
+- **LLM-Modell**: Vergleich verschiedener LLM-Modelle
+- **Embedding-Modell**: Vergleich verschiedener Embedding-Modelle
+
+Für jede Gruppe werden angezeigt: Mean, Standardabweichung, BERT F1, LLM Correctness und durchschnittliche Verarbeitungszeit.
+
+#### Re-Run Modal
+
+Einzelne Fragen können direkt aus der Vergleichstabelle erneut ausgeführt werden:
+- Klicke auf den Re-Run-Button neben einer Frage
+- Wähle einen anderen Graph-Typ und/oder eine andere Collection
+- Die neue Ausführung wird der bestehenden Session hinzugefügt
+
+#### Export-Funktion
+
+Daten können in verschiedenen Formaten exportiert werden:
+
+| Option | Beschreibung |
+|--------|--------------|
+| **Export-Typen** | Vollexport, Statistiken, Vergleichstabelle |
+| **Formate** | CSV, JSON, LaTeX |
+| **Umfang** | Alle Daten, gefiltert oder benutzerdefinierte Modellauswahl |
+| **Deduplizierung** | Option zur Entfernung doppelter Einträge |
 
 ### Metriken-Übersicht
 
@@ -619,8 +662,24 @@ Bei Batch-Evaluierungen werden folgende Metriken erfasst:
 | **BERT Precision** | Wie viel der generierten Antwort in der Referenz enthalten ist |
 | **BERT Recall** | Wie viel der Referenz in der generierten Antwort abgedeckt wird |
 | **BERT F1** | Harmonisches Mittel aus Precision und Recall |
+| **LLM Correctness** | LLM-basierte Bewertung der inhaltlichen Korrektheit (0-1) |
 | **Processing Time** | Gesamtverarbeitungszeit in Millisekunden |
 | **Iterations** | Anzahl der Graph-Durchläufe (nur Adaptive RAG) |
+
+---
+
+## Statistische Auswertung
+
+Das Verzeichnis `langgraph-rag/statistic/` enthält Skripte zur weitergehenden statistischen Analyse der Evaluierungsergebnisse:
+
+| Skript | Beschreibung |
+|--------|--------------|
+| `01_datenbereinigung.py` | Datenbereinigung und Vorbereitung der exportierten Ergebnisse |
+| `02_statistische_analyse.py` | Statistische Analyse mit Wilcoxon-Tests und Cohen's d |
+| `03_judge_vergleich.py` | Vergleich der Evaluierungsmethoden (BERT-Score vs. LLM Correctness) |
+| `04_visualisierungen.py` | Visualisierungen und Plots der Ergebnisse |
+
+Die Skripte sind nummeriert und sollten in der angegebenen Reihenfolge ausgeführt werden. Die Ergebnisse (Plots, Tabellen) werden im Unterverzeichnis `statistic/ergebnisse/` abgelegt.
 
 ---
 
@@ -638,8 +697,9 @@ BiBorBA/
 │   │   │       ├── nodes/   # Retrieve, Generate, Grade, Rewrite
 │   │   │       └── tools/   # Dokumenten-Loader
 │   │   ├── services/        # Business-Logik
-│   │   ├── evaluation/      # BERT-Score, Metriken
+│   │   ├── evaluation/      # BERT-Score, LLM Correctness, Metriken
 │   │   └── tests/           # Unit-Tests
+│   ├── statistic/          # Statistische Auswertung der Ergebnisse
 │   ├── resources/
 │   │   └── documents/       # PDF-Dokumente
 │   ├── docker-compose.yml   # Docker-Services
@@ -648,9 +708,17 @@ BiBorBA/
 │
 ├── frontend/                # Frontend (React/TypeScript)
 │   ├── src/
-│   │   ├── components/      # UI-Komponenten
-│   │   ├── services/        # API-Client
-│   │   └── types/           # TypeScript-Typen
+│   │   ├── components/
+│   │   │   ├── query/          # Abfrage-Ansicht
+│   │   │   ├── views/          # Hauptansichten (6 Views)
+│   │   │   ├── comparison/     # Vergleichs-Unterkomponenten
+│   │   │   ├── table/          # Wiederverwendbare Tabellen
+│   │   │   └── layout/         # Navigation (ViewSwitcher)
+│   │   ├── hooks/              # Custom React Hooks
+│   │   ├── services/           # API-Client
+│   │   ├── types/              # TypeScript-Typen
+│   │   ├── utils/              # Hilfsfunktionen
+│   │   └── theme/              # Design-System (Farben, Tabellen)
 │   └── package.json
 │
 ├── start.sh                 # Start-Skript (Unix)
@@ -755,17 +823,28 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/langgraph_rag
 # Ollama
 OLLAMA_BASE_URL=http://localhost:11434
 
-# Vector Store
+# Pfade
+PDF_PATH=resources/documents
 CHROMA_PERSIST_DIR=./data/chroma
+EXPORT_DIR=./exports
 
 # Text-Verarbeitung
 CHUNK_SIZE=800
 CHUNK_OVERLAP=100
+MAX_PDF_SIZE_MB=100
 
-# Features
-STACKOVERFLOW_ENABLED=true
-ENABLE_MULTI_SOURCE_RETRIEVAL=true
-ENABLE_RESULT_CACHING=true
+# API
+API_HOST=0.0.0.0
+API_PORT=8000
+API_DEBUG=false
+LOG_LEVEL=INFO
+CORS_ORIGINS=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+
+# Retrieval & Graph Settings
+RETRIEVAL_K=8
+MAX_GENERATION_RETRIES=2
+MAX_TRANSFORM_RETRIES=2
+MAX_TOTAL_ITERATIONS=15
 ```
 
 ---
@@ -851,7 +930,6 @@ curl http://localhost:8000/health
 |--------|-------------|---------|----------|
 | `embeddinggemma:latest` | 768 | 2048 tokens | Gemma3-basiert, empfohlen |
 | `nomic-embed-text` | 768 | 2048 tokens | BERT-basiert, bewährt |
-| `mxbai-embed-large` | 1024 | 512 tokens | Größere Dimensionen |
 
 **Anforderungen an Embedding-Modelle:**
 - Muss "embedding" Capability haben (prüfen mit `ollama show`)

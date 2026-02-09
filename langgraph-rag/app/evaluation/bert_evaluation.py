@@ -1,10 +1,9 @@
-# app/evaluation/bert_evaluation.py
 """
 BERT Score evaluation service for generated answers
 """
 import logging
-from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass
+from typing import Optional, List
 
 try:
     from bert_score import BERTScorer
@@ -69,7 +68,6 @@ class BERTEvaluationService:
         try:
             logger.info("Computing BERT Score...")
 
-            # Compute BERT Score
             P, R, F1 = self.scorer.score([generated_answer], [reference_answer])
 
             result = BERTScoreResult(

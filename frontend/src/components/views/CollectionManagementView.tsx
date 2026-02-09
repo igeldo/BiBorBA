@@ -6,8 +6,11 @@ import type {
   CollectionStatistics,
   AvailablePDF,
   DocumentResponse,
-  RebuildJobProgress
+  RebuildJobProgress,
+  CurrentModels
 } from '../../types'
+import { SortableHeader, HeaderCell, TablePagination, StackOverflowLink, TagList } from '../table'
+import { TABLE_PAGE_SIZES, DEFAULT_PAGE_SIZE, TABLE_COLORS, getScoreDisplayColor } from '../../theme/tableConstants'
 
 type TabType = 'questions' | 'add-questions' | 'documents' | 'add-documents'
 
@@ -33,11 +36,11 @@ export const CollectionManagementView: React.FC = () => {
   // Filters
   const [tagFilter, setTagFilter] = useState('')
   const [minScore, setMinScore] = useState<number | undefined>(undefined)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
 
   // Sorting
   const [sortBy, setSortBy] = useState<string>('score')
-  const [sortOrder, setSortOrder] = useState<string>('desc')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   // Rebuild Status
   const [rebuildStatus, setRebuildStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle')
@@ -46,6 +49,9 @@ export const CollectionManagementView: React.FC = () => {
 
   // Statistics
   const [statistics, setStatistics] = useState<CollectionStatistics | null>(null)
+
+  // Current Models
+  const [currentModels, setCurrentModels] = useState<CurrentModels | null>(null)
 
   // Create Collection Dialog
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -62,10 +68,20 @@ export const CollectionManagementView: React.FC = () => {
   const [availablePDFs, setAvailablePDFs] = useState<AvailablePDF[]>([])
   const [selectedPDFPaths, setSelectedPDFPaths] = useState<Set<string>>(new Set())
 
-  // Load collections on mount
+  // Load collections and current models on mount
   useEffect(() => {
     loadCollections()
+    loadCurrentModels()
   }, [])
+
+  const loadCurrentModels = async () => {
+    try {
+      const models = await apiService.getCurrentModels()
+      setCurrentModels(models)
+    } catch (err) {
+      console.error('Failed to load current models:', err)
+    }
+  }
 
   // Auto-switch to correct tab when collection type changes
   useEffect(() => {
@@ -196,7 +212,7 @@ export const CollectionManagementView: React.FC = () => {
   }
 
   const handleDeleteCollection = async (collectionId: number) => {
-    if (!confirm('Are you sure you want to delete this collection?')) return
+    if (!confirm('Sind Sie sicher, dass Sie diese Collection löschen möchten?')) return
 
     try {
       setLoading(true)
@@ -452,7 +468,7 @@ export const CollectionManagementView: React.FC = () => {
               cursor: 'pointer'
             }}
           >
-            + New Collection
+            + Neue Collection
           </button>
         </div>
 
@@ -473,7 +489,7 @@ export const CollectionManagementView: React.FC = () => {
               <div style={{ fontWeight: 'bold' }}>{collection.name}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                 <span style={{ fontSize: '0.9em', color: '#666' }}>
-                  {collection.question_count} items
+                  {collection.question_count} Elemente
                 </span>
                 <span style={{
                   fontSize: '0.75em',
@@ -534,27 +550,27 @@ export const CollectionManagementView: React.FC = () => {
                     cursor: 'pointer'
                   }}
                 >
-                  Delete Collection
+                  Collection löschen
                 </button>
               </div>
 
               {/* Statistics */}
-              <div style={{ display: 'flex', gap: '20px', marginTop: '15px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', gap: '20px', marginTop: '15px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <div>
-                  <strong>Questions:</strong> {selectedCollection.question_count}
+                  <strong>Fragen:</strong> {selectedCollection.question_count}
                 </div>
                 {statistics && (
                   <>
                     <div>
-                      <strong>Avg Score:</strong> {statistics.avg_score.toFixed(1)}
+                      <strong>Durchschn. Score:</strong> {statistics.avg_score.toFixed(1)}
                     </div>
                     <div>
-                      <strong>Avg Views:</strong> {statistics.avg_views.toFixed(0)}
+                      <strong>Durchschn. Ansichten:</strong> {statistics.avg_views.toFixed(0)}
                     </div>
                   </>
                 )}
                 <div>
-                  <strong>Last Rebuilt:</strong> {formatDate(selectedCollection.last_rebuilt_at)}
+                  <strong>Zuletzt neu erstellt:</strong> {formatDate(selectedCollection.last_rebuilt_at)}
                 </div>
                 <button
                   onClick={handleRebuildCollection}
@@ -571,6 +587,24 @@ export const CollectionManagementView: React.FC = () => {
                 >
                   Rebuild ChromaDB
                 </button>
+              </div>
+
+              {/* Model Information */}
+              <div style={{ display: 'flex', gap: '20px', marginTop: '10px', padding: '12px 15px', backgroundColor: '#e8f4fd', borderRadius: '4px', alignItems: 'center' }}>
+                <div>
+                  <strong>Embedding Model:</strong>{' '}
+                  <span style={{ fontFamily: 'monospace', backgroundColor: '#fff', padding: '2px 6px', borderRadius: '3px' }}>
+                    {selectedCollection.embedding_model || 'N/A'}
+                  </span>
+                </div>
+                {currentModels && (
+                  <div>
+                    <strong>LLM Model (aktiv):</strong>{' '}
+                    <span style={{ fontFamily: 'monospace', backgroundColor: '#fff', padding: '2px 6px', borderRadius: '3px' }}>
+                      {currentModels.llm_model}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -690,7 +724,7 @@ export const CollectionManagementView: React.FC = () => {
                       marginRight: '10px'
                     }}
                   >
-                    Questions in Collection ({selectedCollection.question_count})
+                    Fragen in Collection ({selectedCollection.question_count})
                   </button>
                   <button
                     onClick={() => setActiveTab('add-questions')}
@@ -703,7 +737,7 @@ export const CollectionManagementView: React.FC = () => {
                       cursor: 'pointer'
                     }}
                   >
-                    Add Questions
+                    Fragen hinzufügen
                   </button>
                 </>
               ) : (
@@ -720,7 +754,7 @@ export const CollectionManagementView: React.FC = () => {
                       marginRight: '10px'
                     }}
                   >
-                    Documents in Collection ({selectedCollection.question_count})
+                    Dokumente in Collection ({selectedCollection.question_count})
                   </button>
                   <button
                     onClick={() => setActiveTab('add-documents')}
@@ -733,7 +767,7 @@ export const CollectionManagementView: React.FC = () => {
                       cursor: 'pointer'
                     }}
                   >
-                    Add Documents
+                    Dokumente hinzufügen
                   </button>
                 </>
               )}
@@ -743,7 +777,7 @@ export const CollectionManagementView: React.FC = () => {
             <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 type="text"
-                placeholder="Filter by tags (comma-separated)"
+                placeholder="Nach Tags filtern (kommagetrennt)"
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
                 style={{ padding: '8px', flex: 1, minWidth: '200px', borderRadius: '4px', border: '1px solid #ccc' }}
@@ -764,10 +798,9 @@ export const CollectionManagementView: React.FC = () => {
                 }}
                 style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
               >
-                <option value="20">20 per page</option>
-                <option value="50">50 per page</option>
-                <option value="100">100 per page</option>
-                <option value="200">200 per page</option>
+                {TABLE_PAGE_SIZES.map(size => (
+                  <option key={size} value={size}>{size} pro Seite</option>
+                ))}
               </select>
               <button
                 onClick={() => activeTab === 'questions' ? loadCollectionQuestions() : loadAvailableQuestions()}
@@ -780,7 +813,7 @@ export const CollectionManagementView: React.FC = () => {
                   cursor: 'pointer'
                 }}
               >
-                Apply Filters
+                Filter anwenden
               </button>
             </div>
 
@@ -791,68 +824,86 @@ export const CollectionManagementView: React.FC = () => {
               // Questions in Collection Tab
               <div>
                 <div style={{ marginBottom: '10px' }}>
-                  <strong>Total: {collectionTotal} questions</strong>
+                  <strong>Gesamt: {collectionTotal} Fragen</strong>
                 </div>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#f5f5f5' }}>
-                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Title</th>
-                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Tags</th>
-                      <th
-                        style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd', cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => {
-                          if (sortBy === 'score') {
+                    <tr style={{ backgroundColor: TABLE_COLORS.headerBg }}>
+                      <HeaderCell>Titel</HeaderCell>
+                      <HeaderCell>Tags</HeaderCell>
+                      <SortableHeader
+                        column="score"
+                        label="Score"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
                             setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
                           } else {
-                            setSortBy('score')
+                            setSortBy(col)
                             setSortOrder('desc')
                           }
                           setCollectionPage(1)
                         }}
-                      >
-                        Score {sortBy === 'score' && (sortOrder === 'desc' ? '▼' : '▲')}
-                      </th>
-                      <th
-                        style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd', cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => {
-                          if (sortBy === 'view_count') {
+                        align="center"
+                      />
+                      <SortableHeader
+                        column="view_count"
+                        label="Ansichten"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
                             setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
                           } else {
-                            setSortBy('view_count')
+                            setSortBy(col)
                             setSortOrder('desc')
                           }
                           setCollectionPage(1)
                         }}
-                      >
-                        Views {sortBy === 'view_count' && (sortOrder === 'desc' ? '▼' : '▲')}
-                      </th>
-                      <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
+                        align="center"
+                      />
+                      <SortableHeader
+                        column="creation_date"
+                        label="Datum"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
+                            setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                          } else {
+                            setSortBy(col)
+                            setSortOrder('desc')
+                          }
+                          setCollectionPage(1)
+                        }}
+                        align="center"
+                      />
+                      <HeaderCell align="center">Aktionen</HeaderCell>
                     </tr>
                   </thead>
                   <tbody>
                     {collectionQuestions.map(question => (
-                      <tr key={question.id} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '10px' }}>{question.title}</td>
+                      <tr key={question.id} style={{ borderBottom: `1px solid ${TABLE_COLORS.rowBorder}` }}>
                         <td style={{ padding: '10px' }}>
-                          {question.tags?.split(',').slice(0, 3).map(tag => (
-                            <span key={tag} style={{
-                              backgroundColor: '#e3f2fd',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              marginRight: '5px',
-                              fontSize: '0.85em'
-                            }}>
-                              {tag.trim()}
-                            </span>
-                          ))}
+                          <StackOverflowLink
+                            stackOverflowId={question.stack_overflow_id}
+                            title={question.title}
+                          />
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <TagList tags={question.tags} maxTags={3} />
                         </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>
-                          <span style={{ color: question.score > 5 ? '#4CAF50' : '#666' }}>
+                          <span style={{ color: getScoreDisplayColor(question.score) }}>
                             {question.score}
                           </span>
                         </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>{question.view_count}</td>
+                        <td style={{ padding: '10px', textAlign: 'center' }}>
+                          {question.creation_date ? new Date(question.creation_date).toLocaleDateString('de-DE') : '-'}
+                        </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>
                           <button
                             onClick={() => handleRemoveQuestion(question.id)}
@@ -866,7 +917,7 @@ export const CollectionManagementView: React.FC = () => {
                               fontSize: '0.85em'
                             }}
                           >
-                            Remove
+                            Entfernen
                           </button>
                         </td>
                       </tr>
@@ -875,49 +926,30 @@ export const CollectionManagementView: React.FC = () => {
                 </table>
 
                 {/* Pagination */}
-                <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                  <button
-                    onClick={() => setCollectionPage(p => Math.max(1, p - 1))}
-                    disabled={collectionPage === 1}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: collectionPage === 1 ? '#ccc' : '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: collectionPage === 1 ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    Previous
-                  </button>
-                  <span style={{ padding: '8px 16px' }}>
-                    Page {collectionPage} of {Math.ceil(collectionTotal / pageSize)}
-                  </span>
-                  <button
-                    onClick={() => setCollectionPage(p => p + 1)}
-                    disabled={collectionPage >= Math.ceil(collectionTotal / pageSize)}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: collectionPage >= Math.ceil(collectionTotal / pageSize) ? '#ccc' : '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: collectionPage >= Math.ceil(collectionTotal / pageSize) ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    Next
-                  </button>
-                </div>
+                <TablePagination
+                  page={collectionPage}
+                  pageSize={pageSize}
+                  totalItems={collectionTotal}
+                  totalPages={Math.ceil(collectionTotal / pageSize)}
+                  hasNext={collectionPage < Math.ceil(collectionTotal / pageSize)}
+                  hasPrev={collectionPage > 1}
+                  onPageChange={setCollectionPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size)
+                    setCollectionPage(1)
+                  }}
+                  pageSizeOptions={TABLE_PAGE_SIZES}
+                />
               </div>
             ) : (
               // Add Questions Tab
               <div>
                 <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <strong>Available Questions: {availableTotal}</strong>
+                    <strong>Verfügbare Fragen: {availableTotal}</strong>
                     {selectedQuestionIds.size > 0 && (
                       <span style={{ marginLeft: '20px', color: '#2196F3' }}>
-                        {selectedQuestionIds.size} selected
+                        {selectedQuestionIds.size} ausgewählt
                       </span>
                     )}
                   </div>
@@ -933,7 +965,7 @@ export const CollectionManagementView: React.FC = () => {
                         cursor: 'pointer'
                       }}
                     >
-                      Select All
+                      Alle auswählen
                     </button>
                     <button
                       onClick={handleDeselectAll}
@@ -946,7 +978,7 @@ export const CollectionManagementView: React.FC = () => {
                         cursor: 'pointer'
                       }}
                     >
-                      Deselect All
+                      Auswahl aufheben
                     </button>
                     <button
                       onClick={handleAddQuestions}
@@ -960,15 +992,15 @@ export const CollectionManagementView: React.FC = () => {
                         cursor: selectedQuestionIds.size === 0 ? 'not-allowed' : 'pointer'
                       }}
                     >
-                      Add Selected ({selectedQuestionIds.size})
+                      Ausgewählte hinzufügen ({selectedQuestionIds.size})
                     </button>
                   </div>
                 </div>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#f5f5f5' }}>
-                      <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid #ddd' }}>
+                    <tr style={{ backgroundColor: TABLE_COLORS.headerBg }}>
+                      <HeaderCell align="center" width="40px">
                         <input
                           type="checkbox"
                           checked={availableQuestions.length > 0 && availableQuestions.every(q => selectedQuestionIds.has(q.id))}
@@ -980,37 +1012,57 @@ export const CollectionManagementView: React.FC = () => {
                             }
                           }}
                         />
-                      </th>
-                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Title</th>
-                      <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Tags</th>
-                      <th
-                        style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd', cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => {
-                          if (sortBy === 'score') {
+                      </HeaderCell>
+                      <HeaderCell>Titel</HeaderCell>
+                      <HeaderCell>Tags</HeaderCell>
+                      <SortableHeader
+                        column="score"
+                        label="Score"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
                             setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
                           } else {
-                            setSortBy('score')
+                            setSortBy(col)
                             setSortOrder('desc')
                           }
                           setAvailablePage(1)
                         }}
-                      >
-                        Score {sortBy === 'score' && (sortOrder === 'desc' ? '▼' : '▲')}
-                      </th>
-                      <th
-                        style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd', cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => {
-                          if (sortBy === 'view_count') {
+                        align="center"
+                      />
+                      <SortableHeader
+                        column="view_count"
+                        label="Ansichten"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
                             setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
                           } else {
-                            setSortBy('view_count')
+                            setSortBy(col)
                             setSortOrder('desc')
                           }
                           setAvailablePage(1)
                         }}
-                      >
-                        Views {sortBy === 'view_count' && (sortOrder === 'desc' ? '▼' : '▲')}
-                      </th>
+                        align="center"
+                      />
+                      <SortableHeader
+                        column="creation_date"
+                        label="Datum"
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        onSort={(col) => {
+                          if (sortBy === col) {
+                            setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                          } else {
+                            setSortBy(col)
+                            setSortOrder('desc')
+                          }
+                          setAvailablePage(1)
+                        }}
+                        align="center"
+                      />
                     </tr>
                   </thead>
                   <tbody>
@@ -1018,8 +1070,8 @@ export const CollectionManagementView: React.FC = () => {
                       <tr
                         key={question.id}
                         style={{
-                          borderBottom: '1px solid #eee',
-                          backgroundColor: selectedQuestionIds.has(question.id) ? '#e8f5e9' : 'transparent'
+                          borderBottom: `1px solid ${TABLE_COLORS.rowBorder}`,
+                          backgroundColor: selectedQuestionIds.has(question.id) ? TABLE_COLORS.selectedRow : 'transparent'
                         }}
                       >
                         <td style={{ padding: '10px', textAlign: 'center' }}>
@@ -1029,65 +1081,44 @@ export const CollectionManagementView: React.FC = () => {
                             onChange={() => handleToggleQuestion(question.id)}
                           />
                         </td>
-                        <td style={{ padding: '10px' }}>{question.title}</td>
                         <td style={{ padding: '10px' }}>
-                          {question.tags?.split(',').slice(0, 3).map(tag => (
-                            <span key={tag} style={{
-                              backgroundColor: '#e3f2fd',
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              marginRight: '5px',
-                              fontSize: '0.85em'
-                            }}>
-                              {tag.trim()}
-                            </span>
-                          ))}
+                          <StackOverflowLink
+                            stackOverflowId={question.stack_overflow_id}
+                            title={question.title}
+                          />
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <TagList tags={question.tags} maxTags={3} />
                         </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>
-                          <span style={{ color: question.score > 5 ? '#4CAF50' : '#666' }}>
+                          <span style={{ color: getScoreDisplayColor(question.score) }}>
                             {question.score}
                           </span>
                         </td>
                         <td style={{ padding: '10px', textAlign: 'center' }}>{question.view_count}</td>
+                        <td style={{ padding: '10px', textAlign: 'center' }}>
+                          {question.creation_date ? new Date(question.creation_date).toLocaleDateString('de-DE') : '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
 
                 {/* Pagination */}
-                <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                  <button
-                    onClick={() => setAvailablePage(p => Math.max(1, p - 1))}
-                    disabled={availablePage === 1}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: availablePage === 1 ? '#ccc' : '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: availablePage === 1 ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    Previous
-                  </button>
-                  <span style={{ padding: '8px 16px' }}>
-                    Page {availablePage} of {Math.ceil(availableTotal / pageSize)}
-                  </span>
-                  <button
-                    onClick={() => setAvailablePage(p => p + 1)}
-                    disabled={availablePage >= Math.ceil(availableTotal / pageSize)}
-                    style={{
-                      padding: '8px 16px',
-                      backgroundColor: availablePage >= Math.ceil(availableTotal / pageSize) ? '#ccc' : '#2196F3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: availablePage >= Math.ceil(availableTotal / pageSize) ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    Next
-                  </button>
-                </div>
+                <TablePagination
+                  page={availablePage}
+                  pageSize={pageSize}
+                  totalItems={availableTotal}
+                  totalPages={Math.ceil(availableTotal / pageSize)}
+                  hasNext={availablePage < Math.ceil(availableTotal / pageSize)}
+                  hasPrev={availablePage > 1}
+                  onPageChange={setAvailablePage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size)
+                    setAvailablePage(1)
+                  }}
+                  pageSizeOptions={TABLE_PAGE_SIZES}
+                />
               </div>
               )
             ) : (
@@ -1096,21 +1127,21 @@ export const CollectionManagementView: React.FC = () => {
                 // Documents in Collection Tab
                 <div>
                   <div style={{ marginBottom: '10px' }}>
-                    <strong>Total: {documentsTotal} documents</strong>
+                    <strong>Gesamt: {documentsTotal} Dokumente</strong>
                   </div>
 
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#f5f5f5' }}>
-                        <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Document Name</th>
-                        <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Path</th>
-                        <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Added</th>
-                        <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Actions</th>
+                      <tr style={{ backgroundColor: TABLE_COLORS.headerBg }}>
+                        <HeaderCell>Dokumentname</HeaderCell>
+                        <HeaderCell>Pfad</HeaderCell>
+                        <HeaderCell align="center">Hinzugefügt</HeaderCell>
+                        <HeaderCell align="center">Aktionen</HeaderCell>
                       </tr>
                     </thead>
                     <tbody>
                       {collectionDocuments.map(doc => (
-                        <tr key={doc.id} style={{ borderBottom: '1px solid #eee' }}>
+                        <tr key={doc.id} style={{ borderBottom: `1px solid ${TABLE_COLORS.rowBorder}` }}>
                           <td style={{ padding: '10px' }}>{doc.document_name}</td>
                           <td style={{ padding: '10px', fontSize: '0.9em', color: '#666' }}>{doc.document_path}</td>
                           <td style={{ padding: '10px', textAlign: 'center', fontSize: '0.9em' }}>
@@ -1138,49 +1169,30 @@ export const CollectionManagementView: React.FC = () => {
                   </table>
 
                   {/* Pagination */}
-                  <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                    <button
-                      onClick={() => setDocumentsPage(p => Math.max(1, p - 1))}
-                      disabled={documentsPage === 1}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: documentsPage === 1 ? '#ccc' : '#2196F3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: documentsPage === 1 ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      Previous
-                    </button>
-                    <span style={{ padding: '8px 16px' }}>
-                      Page {documentsPage} of {Math.ceil(documentsTotal / pageSize)}
-                    </span>
-                    <button
-                      onClick={() => setDocumentsPage(p => p + 1)}
-                      disabled={documentsPage >= Math.ceil(documentsTotal / pageSize)}
-                      style={{
-                        padding: '8px 16px',
-                        backgroundColor: documentsPage >= Math.ceil(documentsTotal / pageSize) ? '#ccc' : '#2196F3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: documentsPage >= Math.ceil(documentsTotal / pageSize) ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      Next
-                    </button>
-                  </div>
+                  <TablePagination
+                    page={documentsPage}
+                    pageSize={pageSize}
+                    totalItems={documentsTotal}
+                    totalPages={Math.ceil(documentsTotal / pageSize)}
+                    hasNext={documentsPage < Math.ceil(documentsTotal / pageSize)}
+                    hasPrev={documentsPage > 1}
+                    onPageChange={setDocumentsPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size)
+                      setDocumentsPage(1)
+                    }}
+                    pageSizeOptions={TABLE_PAGE_SIZES}
+                  />
                 </div>
               ) : (
                 // Add Documents Tab
                 <div>
                   <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <strong>Available PDFs: {availablePDFs.length}</strong>
+                      <strong>Verfügbare PDFs: {availablePDFs.length}</strong>
                       {selectedPDFPaths.size > 0 && (
                         <span style={{ marginLeft: '20px', color: '#2196F3' }}>
-                          {selectedPDFPaths.size} selected
+                          {selectedPDFPaths.size} ausgewählt
                         </span>
                       )}
                     </div>
@@ -1223,15 +1235,15 @@ export const CollectionManagementView: React.FC = () => {
                           cursor: selectedPDFPaths.size === 0 ? 'not-allowed' : 'pointer'
                         }}
                       >
-                        Add Selected ({selectedPDFPaths.size})
+                        Ausgewählte hinzufügen ({selectedPDFPaths.size})
                       </button>
                     </div>
                   </div>
 
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ backgroundColor: '#f5f5f5' }}>
-                        <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid #ddd' }}>
+                      <tr style={{ backgroundColor: TABLE_COLORS.headerBg }}>
+                        <HeaderCell align="center" width="40px">
                           <input
                             type="checkbox"
                             checked={availablePDFs.length > 0 && availablePDFs.every(pdf => selectedPDFPaths.has(pdf.path))}
@@ -1243,11 +1255,11 @@ export const CollectionManagementView: React.FC = () => {
                               }
                             }}
                           />
-                        </th>
-                        <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>File Name</th>
-                        <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Path</th>
-                        <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Size</th>
-                        <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>Modified</th>
+                        </HeaderCell>
+                        <HeaderCell>Dateiname</HeaderCell>
+                        <HeaderCell>Pfad</HeaderCell>
+                        <HeaderCell align="center">Größe</HeaderCell>
+                        <HeaderCell align="center">Geändert</HeaderCell>
                       </tr>
                     </thead>
                     <tbody>
@@ -1255,8 +1267,8 @@ export const CollectionManagementView: React.FC = () => {
                         <tr
                           key={pdf.path}
                           style={{
-                            borderBottom: '1px solid #eee',
-                            backgroundColor: selectedPDFPaths.has(pdf.path) ? '#e8f5e9' : 'transparent'
+                            borderBottom: `1px solid ${TABLE_COLORS.rowBorder}`,
+                            backgroundColor: selectedPDFPaths.has(pdf.path) ? TABLE_COLORS.selectedRow : 'transparent'
                           }}
                         >
                           <td style={{ padding: '10px', textAlign: 'center' }}>
@@ -1284,7 +1296,7 @@ export const CollectionManagementView: React.FC = () => {
           </>
         ) : (
           <div style={{ textAlign: 'center', padding: '50px', color: '#666' }}>
-            <p>No collection selected. Create or select a collection to get started.</p>
+            <p>Keine Collection ausgewählt. Erstellen oder wählen Sie eine Collection, um zu beginnen.</p>
           </div>
         )}
       </div>
@@ -1310,10 +1322,10 @@ export const CollectionManagementView: React.FC = () => {
             width: '500px',
             maxWidth: '90%'
           }}>
-            <h3>Create New Collection</h3>
+            <h3>Neue Collection erstellen</h3>
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Collection Name *
+                Collection-Name *
               </label>
               <input
                 type="text"
@@ -1330,7 +1342,7 @@ export const CollectionManagementView: React.FC = () => {
             </div>
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Description (optional)
+                Beschreibung (optional)
               </label>
               <textarea
                 value={newCollectionDescription}
@@ -1342,12 +1354,12 @@ export const CollectionManagementView: React.FC = () => {
                   border: '1px solid #ccc',
                   minHeight: '80px'
                 }}
-                placeholder="Description of this collection..."
+                placeholder="Beschreibung dieser Collection..."
               />
             </div>
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
-                Collection Type *
+                Collection-Typ *
               </label>
               <select
                 value={newCollectionType}
@@ -1359,8 +1371,8 @@ export const CollectionManagementView: React.FC = () => {
                   border: '1px solid #ccc'
                 }}
               >
-                <option value="stackoverflow">StackOverflow Questions</option>
-                <option value="pdf">PDF Documents</option>
+                <option value="stackoverflow">StackOverflow-Fragen</option>
+                <option value="pdf">PDF-Dokumente</option>
               </select>
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -1379,7 +1391,7 @@ export const CollectionManagementView: React.FC = () => {
                   cursor: 'pointer'
                 }}
               >
-                Cancel
+                Abbrechen
               </button>
               <button
                 onClick={handleCreateCollection}
@@ -1393,7 +1405,7 @@ export const CollectionManagementView: React.FC = () => {
                   cursor: !newCollectionName.trim() || loading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {loading ? 'Creating...' : 'Create'}
+                {loading ? 'Wird erstellt...' : 'Erstellen'}
               </button>
             </div>
           </div>

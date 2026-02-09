@@ -1,20 +1,17 @@
-# services/graph_service.py
 import logging
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from langchain_core.documents import Document
 from langgraph.graph.state import CompiledStateGraph
 
 from app.api.schemas.schemas import RetrieverType, GraphType
 from app.config import settings
 from app.core.graph.adaptive_graph import GraphState, create_adaptive_graph
-from app.core.graph.rag_graph import create_rag_graph
 from app.core.graph.pure_llm_graph import create_pure_llm_graph
+from app.core.graph.rag_graph import create_rag_graph
 from app.core.model_manager import get_model_manager
 from app.database import SessionLocal, GraphExecution
-from app.utils.timing import TimingContext
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +39,6 @@ class GraphService:
             elif graph_type == GraphType.SIMPLE_RAG:
                 self._graphs[graph_key] = create_rag_graph(retriever_type)
             elif graph_type == GraphType.PURE_LLM:
-                # Pure LLM doesn't use retriever, but we keep the key for caching
                 self._graphs[graph_key] = create_pure_llm_graph()
             else:
                 raise ValueError(f"Unknown graph type: {graph_type}")
@@ -84,17 +80,14 @@ class GraphService:
         execution_trace = []
         node_timings = {}
 
-        logger.debug(f"⏱️  START: Graph execution for query: '{question[:50]}...' with graph type: {graph_type.value}")
+        logger.debug(f"START: Graph execution for query: '{question[:50]}...' with graph type: {graph_type.value}")
 
         try:
-            # Get the appropriate graph
-            with TimingContext("Get/create graph", logger):
-                graph = self.get_graph(graph_type, retriever_type)
+            graph = self.get_graph(graph_type, retriever_type)
 
-            # Prepare initial state with iteration tracking
             initial_state = GraphState(
                 question=question,
-                original_question=question,  # Preserve original for generation after rewrites
+                original_question=question,
                 generation="",
                 documents=[],
                 model_config=model_config or {},
@@ -107,18 +100,15 @@ class GraphService:
                 fallback_type=""
             )
 
-            # Execute graph with tracing and recursion limit
             final_state = None
-            logger.debug("⏱️  START: Graph streaming execution")
             stream_start = time.time()
-            last_step_time = stream_start  # Track time between stream outputs
+            last_step_time = stream_start
 
             for step_output in graph.stream(
                 initial_state,
                 {"recursion_limit": settings.graph_recursion_limit}
             ):
                 current_time = time.time()
-                # Measure time since last output (= actual node execution time)
                 step_duration = (current_time - last_step_time) * 1000
 
                 for node_name, node_output in step_output.items():
@@ -126,17 +116,12 @@ class GraphService:
                     node_timings[node_name] = step_duration
 
                     logger.info(f"Executed node '{node_name}' in {step_duration:.2f}ms")
-                    logger.debug(f"✅ Node '{node_name}' completed: {step_duration:.1f}ms")
                     final_state = node_output
 
-                last_step_time = current_time  # Update for next iteration
-
-            stream_duration = (time.time() - stream_start) * 1000
-            logger.debug(f"✅ DONE: Graph streaming execution - {stream_duration:.1f}ms")
+                last_step_time = current_time
 
             total_duration = int((time.time() - start_time) * 1000)
 
-            # Extract document details for frontend display
             documents = final_state.get("documents", [])
             retrieved_documents = []
             for doc in documents:
@@ -147,14 +132,12 @@ class GraphService:
                     content = str(doc)
                     metadata = {}
 
-                # Determine source type from metadata
                 source = metadata.get('source_type', 'unknown')
                 if 'stackoverflow' in str(metadata).lower() or 'so_question_id' in metadata:
                     source = 'stackoverflow'
                 elif 'pdf' in str(metadata).lower() or metadata.get('file_path', '').endswith('.pdf'):
                     source = 'pdf'
 
-                # Build document info
                 doc_info = {
                     "source": source,
                     "title": metadata.get('title') or metadata.get('question_title') or metadata.get('file_path', 'Unknown'),
@@ -168,7 +151,6 @@ class GraphService:
                 }
                 retrieved_documents.append(doc_info)
 
-            # Extract results
             result = {
                 "answer": final_state.get("generation", "No answer generated"),
                 "documents_retrieved": len(documents),
@@ -187,24 +169,20 @@ class GraphService:
                 "node_timings": node_timings
             }
 
-            # Store execution details for monitoring (sync call)
-            with TimingContext("Store execution details in database", logger):
-                graph_execution_id = self._store_execution_details(
-                    session_id=session_id,
-                    graph_type=graph_type.value,
-                    execution_path=execution_trace,
-                    node_timings=node_timings,
-                    total_duration=total_duration,
-                    success=True
-                )
+            graph_execution_id = self._store_execution_details(
+                session_id=session_id,
+                graph_type=graph_type.value,
+                execution_path=execution_trace,
+                node_timings=node_timings,
+                total_duration=total_duration,
+                success=True
+            )
 
-            # Add graph_execution_id to result for linking with evaluations
             result["graph_execution_id"] = graph_execution_id
 
             logger.info(f"Query executed successfully in {total_duration}ms: {question[:50]}...")
-            logger.debug(f"✅ DONE: Full graph execution - {total_duration}ms")
+            logger.debug(f"DONE: Full graph execution - {total_duration}ms")
 
-            # Log execution summary
             logger.debug("=" * 70)
             logger.debug(f"EXECUTION SUMMARY for '{question[:50]}...'")
             logger.debug(f"Total Duration: {total_duration}ms")
@@ -223,7 +201,6 @@ class GraphService:
             total_duration = int((time.time() - start_time) * 1000)
             logger.error(f"Graph execution failed: {e}")
 
-            # Store failed execution (sync call)
             self._store_execution_details(
                 session_id=session_id,
                 graph_type=graph_type.value,
@@ -296,7 +273,6 @@ class GraphService:
             successful_executions = sum(1 for e in executions if e.success)
             avg_duration = sum(e.total_duration_ms for e in executions) / total_executions
 
-            # Most common execution paths
             path_counts = {}
             for execution in executions:
                 path_key = " -> ".join(execution.execution_path or [])

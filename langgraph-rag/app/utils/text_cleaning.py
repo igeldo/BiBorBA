@@ -7,7 +7,6 @@ API responses, converting HTML to clean plain text.
 
 import html
 import re
-from typing import Optional
 
 
 def clean_html(text: str) -> str:
@@ -28,15 +27,10 @@ def clean_html(text: str) -> str:
     if not text:
         return text
 
-    # Remove HTML tags first (while they're still actual tags)
-    # Pattern: <tag>content</tag> → content
     text = re.sub(r'<[^>]+>', '', text)
 
-    # Then decode HTML entities (&quot; → ", &lt; → <, etc.)
-    # This preserves entities in code content like &lt;value&gt; → <value>
     text = html.unescape(text)
 
-    # Clean up multiple newlines
     text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
 
     return text.strip()

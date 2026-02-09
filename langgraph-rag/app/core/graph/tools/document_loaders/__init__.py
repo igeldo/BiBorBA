@@ -1,7 +1,6 @@
-# core/graph/tools/document_loaders/__init__.py
 """
 Document Loading Module
-Aufgeteilte Loader für verschiedene Dokumenttypen
+Separate loaders for different document types
 """
 
 from .base_loader import BaseDocumentLoader
