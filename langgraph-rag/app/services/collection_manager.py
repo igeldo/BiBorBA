@@ -1,4 +1,3 @@
-# app/services/collection_manager.py
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -6,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import and_, not_, or_
 from sqlalchemy.orm import Session
 
+from app.config import get_current_embedding_model
 from app.database import (
     CollectionConfiguration,
     CollectionQuestion,
@@ -27,8 +27,6 @@ class CollectionManager:
             db: SQLAlchemy database session (injected via DI)
         """
         self.db = db
-
-    # Collection CRUD operations
 
     def create_collection(
         self,
@@ -62,7 +60,8 @@ class CollectionManager:
                 name=name,
                 description=description,
                 collection_type=collection_type,
-                question_count=0
+                question_count=0,
+                embedding_model=get_current_embedding_model()
             )
 
             self.db.add(collection)
@@ -136,8 +135,6 @@ class CollectionManager:
             self.db.rollback()
             logger.error(f"Error deleting collection: {e}")
             raise
-
-    # Question assignment operations
 
     def add_questions_to_collection(
         self,
@@ -247,8 +244,6 @@ class CollectionManager:
             self.db.rollback()
             logger.error(f"Error removing questions from collection: {e}")
             raise
-
-    # Query operations
 
     def get_collection_questions(
         self,
@@ -397,8 +392,11 @@ class CollectionManager:
 
             if collection:
                 collection.last_rebuilt_at = datetime.utcnow()
+                collection.embedding_model = get_current_embedding_model()
+                collection.chroma_exists = True
+                collection.needs_rebuild = False
                 self.db.commit()
-                logger.info(f"Updated rebuild time for collection {collection_id}")
+                logger.info(f"Updated rebuild time and embedding model for collection {collection_id}")
 
         except Exception as e:
             self.db.rollback()
@@ -420,6 +418,7 @@ class CollectionManager:
 
             if collection:
                 collection.rebuild_error = error
+                collection.needs_rebuild = True
                 self.db.commit()
                 logger.info(f"Set rebuild error for collection {collection_id}: {error}")
 
@@ -489,7 +488,6 @@ class CollectionManager:
             "rebuild_error": collection.rebuild_error
         }
 
-    # PDF Collection Operations
 
     def add_documents_to_collection(
         self,
@@ -639,3 +637,33 @@ class CollectionManager:
             "page_size": page_size,
             "total_pages": (total + page_size - 1) // page_size
         }
+
+    def validate_collection_compatibility(self, collection_ids: List[int]) -> None:
+        """
+        Check if all collections are compatible with the current embedding model.
+
+        Args:
+            collection_ids: List of collection IDs to check
+
+        Raises:
+            ValueError: If a collection is incompatible or has no embedding model
+        """
+        current_model = get_current_embedding_model()
+
+        for collection_id in collection_ids:
+            collection = self.get_collection(collection_id)
+            if not collection:
+                raise ValueError(f"Collection {collection_id} not found")
+
+            if collection.embedding_model is None:
+                raise ValueError(
+                    f"Collection '{collection.name}' has no embedding model. "
+                    f"Please rebuild the collection."
+                )
+
+            if collection.embedding_model != current_model:
+                raise ValueError(
+                    f"Collection '{collection.name}' is incompatible: "
+                    f"Collection uses '{collection.embedding_model}', "
+                    f"currently configured: '{current_model}'"
+                )

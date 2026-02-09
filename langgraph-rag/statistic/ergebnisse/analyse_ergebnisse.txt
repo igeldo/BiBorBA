@@ -1,0 +1,208 @@
+Datensatz geladen: 1650 Zeilen, 110 Fragen
+
+======================================================================
+ANALYSE 1: Performance nach Architektur (Tabelle 6.3)
+======================================================================
+              Correctness    Std  BERT_F1   Zeit_s    N
+architecture                                           
+Pure LLM            0.650  0.229    0.584   18.953  330
+Adaptive RAG        0.591  0.253    0.579  141.351  660
+Simple RAG          0.406  0.287    0.546   45.082  660
+
+======================================================================
+ANALYSE 2: Statistische Architekturvergleiche (Tabelle 6.4)
+======================================================================
+Methode: Wilcoxon signed-rank Test, N=110 gepaarte Fragen
+Effektstärke: Cohen's d für gepaarte Stichproben
+
+  Pure LLM vs. Simple RAG:
+    ΔCorrectness = 0.244
+    p-Wert = <0.001
+    Cohen's d = 1.20 (groß)
+
+  Adaptive RAG vs. Simple RAG:
+    ΔCorrectness = 0.184
+    p-Wert = <0.001
+    Cohen's d = 0.93 (groß)
+
+  Pure LLM vs. Adaptive RAG:
+    ΔCorrectness = 0.059
+    p-Wert = <0.001
+    Cohen's d = 0.40 (klein)
+
+
+======================================================================
+ANALYSE 3: Performance nach Sprachmodell (Tabelle 6.5)
+======================================================================
+              Correctness  BERT_F1    N
+model_name                             
+Gemma 3 12B         0.592    0.559  550
+Gemma 3 4B          0.500    0.560  550
+Llama 3.1 8B        0.494    0.581  550
+
+  Paarweise Modellvergleiche:
+    Gemma 3 12B vs. Gemma 3 4B: p = <0.001
+    Gemma 3 12B vs. Llama 3.1 8B: p = <0.001
+    Gemma 3 4B vs. Llama 3.1 8B: p = 0.642
+
+======================================================================
+ANALYSE 4: Kreuzanalyse Architektur × Modell (Tabelle 6.6)
+======================================================================
+model_name    Gemma 3 12B  Gemma 3 4B  Llama 3.1 8B
+architecture                                       
+Pure LLM            0.741       0.584         0.625
+Adaptive RAG        0.697       0.526         0.549
+Simple RAG          0.412       0.433         0.374
+
+BERT F1 nach Architektur × Modell:
+model_name    Gemma 3 12B  Gemma 3 4B  Llama 3.1 8B
+architecture                                       
+Pure LLM            0.577       0.571         0.604
+Adaptive RAG        0.574       0.569         0.593
+Simple RAG          0.534       0.546         0.558
+
+  Distracting Effect (Verlust Simple RAG vs. Pure LLM):
+    Gemma 3 12B: -44.4%
+    Gemma 3 4B: -25.9%
+    Llama 3.1 8B: -40.2%
+
+======================================================================
+ANALYSE 5: Embedding-Vergleich (Tabelle 6.7 / 6.8)
+======================================================================
+Aggregiert:
+                  Correctness  BERT_F1    N
+embedding_name                             
+embeddinggemma          0.523    0.566  660
+nomic-embed-text        0.473    0.559  660
+
+Nach Sprachmodell:
+embedding_name  embeddinggemma  nomic-embed-text  Differenz
+model_name                                                 
+Gemma 3 12B              0.570             0.539      0.031
+Gemma 3 4B               0.544             0.415      0.129
+Llama 3.1 8B             0.456             0.467     -0.011
+
+======================================================================
+ANALYSE 6: Adaptive-RAG-Pfad-Analyse (Tabelle 6.9 / 6.10)
+======================================================================
+                                 Anteil  Correctness  BERT_F1    N
+pfad_typ                                                          
+direkt (retrieve→grade→generate)  59.8%        0.606    0.582  395
+transform → fallback              14.2%        0.516    0.575   94
+generate → fallback               13.8%        0.577    0.582   91
+transform → no_docs_fallback       7.4%        0.617    0.544   49
+mit Transform                      4.7%        0.621    0.584   31
+
+  Simple RAG Baseline Correctness: 0.406
+  Alle Adaptive-RAG-Pfade vs. Simple RAG:
+    direkt (retrieve→grade→generate): 0.606 (+49.1% vs. Simple RAG)
+    transform → fallback: 0.516 (+27.0% vs. Simple RAG)
+    generate → fallback: 0.577 (+42.0% vs. Simple RAG)
+    transform → no_docs_fallback: 0.617 (+51.8% vs. Simple RAG)
+    mit Transform: 0.621 (+52.8% vs. Simple RAG)
+
+======================================================================
+ANALYSE 7: Wissensbasis-Abdeckung (Tabelle 6.11)
+======================================================================
+
+  Fragen in Wissensbasis: 49
+  Fragen nicht in Wissensbasis: 61
+
+  In Wissensbasis:
+    Pure LLM: Correctness=0.650, BERT_F1=0.577
+    Adaptive RAG: Correctness=0.634, BERT_F1=0.574
+    Simple RAG: Correctness=0.444, BERT_F1=0.546
+
+  Nicht in Wissensbasis:
+    Pure LLM: Correctness=0.650, BERT_F1=0.590
+    Adaptive RAG: Correctness=0.556, BERT_F1=0.582
+    Simple RAG: Correctness=0.376, BERT_F1=0.547
+
+  Adaptive RAG vs. Pure LLM (nur Wissensbasis-Fragen):
+    p = 0.304, Cohen's d = -0.10
+
+  Fragen-Differenzanalyse (nur Wissensbasis, N=49):
+    Adaptive deutlich besser (Δ > +0.1): 7 (14.3%)
+    Adaptive leicht besser (0 < Δ ≤ +0.1): 10 (20.4%)
+    Praktisch gleichwertig (|Δ| ≤ 0.05): 20 (40.8%)
+    Adaptive leicht schlechter (-0.1 ≤ Δ < 0): 15 (30.6%)
+    Adaptive deutlich schlechter (Δ < -0.1): 11 (22.4%)
+
+======================================================================
+ANALYSE 8: Verarbeitungszeit (Tabelle 6.15 / 6.16)
+======================================================================
+Verarbeitungszeit (Sekunden):
+  Pure LLM         Gemma 3 12B: 36±15s  Gemma 3 4B: 11±4s  Llama 3.1 8B: 10±4s  
+  Simple RAG       Gemma 3 12B: 87±34s  Gemma 3 4B: 21±9s  Llama 3.1 8B: 27±8s  
+  Adaptive RAG     Gemma 3 12B: 217±91s  Gemma 3 4B: 89±119s  Llama 3.1 8B: 118±40s  
+
+Overhead-Faktoren gegenüber Pure LLM:
+  Simple RAG       Gemma 3 12B: 2.4×  Gemma 3 4B: 2.0×  Llama 3.1 8B: 2.6×  
+  Adaptive RAG     Gemma 3 12B: 6.1×  Gemma 3 4B: 8.3×  Llama 3.1 8B: 11.3×  
+
+======================================================================
+ANALYSE 9: Alle Konfigurationen (Tabelle A.2)
+======================================================================
+                                            Correctness  BERT_F1    N
+architecture model_name   embedding_name                             
+Pure LLM     Gemma 3 12B  keine                   0.741    0.577  110
+Adaptive RAG Gemma 3 12B  embeddinggemma          0.723    0.573  110
+                          nomic-embed-text        0.670    0.575  110
+Pure LLM     Llama 3.1 8B keine                   0.625    0.604  110
+             Gemma 3 4B   keine                   0.584    0.571  110
+Adaptive RAG Llama 3.1 8B nomic-embed-text        0.550    0.592  110
+Simple RAG   Gemma 3 4B   embeddinggemma          0.550    0.566  110
+Adaptive RAG Llama 3.1 8B embeddinggemma          0.548    0.594  110
+             Gemma 3 4B   embeddinggemma          0.539    0.570  110
+                          nomic-embed-text        0.514    0.567  110
+Simple RAG   Gemma 3 12B  embeddinggemma          0.418    0.541  110
+                          nomic-embed-text        0.407    0.528  110
+             Llama 3.1 8B nomic-embed-text        0.384    0.566  110
+                          embeddinggemma          0.364    0.550  110
+             Gemma 3 4B   nomic-embed-text        0.316    0.527  110
+
+======================================================================
+ANALYSE 10: Fragen-Differenzanalyse (Tabelle A.4)
+======================================================================
+  Adaptive deutlich besser (Δ > +0.1): 9 (8.2%)
+  Adaptive leicht besser (0 < Δ ≤ +0.1): 20 (18.2%)
+  Praktisch gleichwertig (|Δ| ≤ 0.05): 41 (37.3%)
+  Adaptive leicht schlechter (-0.1 ≤ Δ < 0): 32 (29.1%)
+  Adaptive deutlich schlechter (Δ < -0.1): 35 (31.8%)
+
+  Top 5 Adaptive-RAG-Vorteile:
+    Δ=+0.333 | Cannot drop table users because other objects depend on it
+    Δ=+0.292 | SQL query to check if a name begins and ends with a vowel
+    Δ=+0.292 | Update with result from CTE
+    Δ=+0.292 | Extract day of week from date field in PostgreSQL assuming w
+    Δ=+0.292 | Cannot drop PostgreSQL role. Error: `cannot be dropped becau
+
+  Top 5 Adaptive-RAG-Nachteile:
+    Δ=-0.458 | How to set multiple values inside an if else statement?
+    Δ=-0.333 | Visual Studio Code vs SQL Formatting
+    Δ=-0.333 | Drop view if exists
+    Δ=-0.333 | How can I have IS NULL condition in TypeORM find options?
+    Δ=-0.333 | Pyspark: Filter dataframe based on multiple conditions
+
+======================================================================
+ANALYSE 11: BERTScore Architekturvergleiche (Triangulation)
+======================================================================
+Gleiche Tests wie Analyse 2, aber mit BERT F1 statt LLM Correctness
+
+  Pure LLM vs. Simple RAG:
+    ΔBERT_F1 = 0.038
+    p-Wert = <0.001
+    Cohen's d = 0.94 (groß)
+
+  Adaptive RAG vs. Simple RAG:
+    ΔBERT_F1 = 0.032
+    p-Wert = <0.001
+    Cohen's d = 0.88 (groß)
+
+  Pure LLM vs. Adaptive RAG:
+    ΔBERT_F1 = 0.005
+    p-Wert = 0.010
+    Cohen's d = 0.22 (klein)
+
+
+Alle Analysen abgeschlossen!

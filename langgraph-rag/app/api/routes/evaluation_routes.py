@@ -1,4 +1,3 @@
-# app/api/evaluation_routes.py
 """
 API routes for answer evaluation system
 """
@@ -7,7 +6,6 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from app.api.schemas.evaluation_schemas import BERTScoreResponse, BERTScoreRequest, ManualEvaluationRequest
-from app.api.middleware import safe_error_handler
 from app.dependencies import get_bert_evaluation_service, get_evaluation_service
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -148,6 +146,8 @@ async def get_evaluation_status():
         return {
             "bert_score_available": bert_service.is_available(),
             "bert_model_type": bert_service.model_type if bert_service.is_available() else None,
+            "llm_correctness_available": evaluation_service.llm_correctness_service.is_available(),
+            "llm_correctness_model": evaluation_service.llm_correctness_service.get_model_name(),
             "evaluation_service_active": True,
             "database_connected": True
         }
@@ -156,7 +156,35 @@ async def get_evaluation_status():
         logger.error(f"Error getting evaluation status: {e}")
         return {
             "bert_score_available": False,
+            "llm_correctness_available": False,
             "evaluation_service_active": False,
             "database_connected": False,
             "error": str(e)
         }
+
+
+@router.post("/backfill-llm-correctness")
+async def backfill_llm_correctness(batch_size: int = 10):
+    """
+    Backfill LLM correctness scores for existing evaluations.
+
+    Finds all evaluations with a reference_answer but no llm_correctness_score
+    and computes the scores using LLM-as-Judge.
+
+    Args:
+        batch_size: Number of evaluations to log progress for (default 10)
+
+    Returns:
+        Processing statistics including total found, succeeded, and failed
+    """
+    try:
+        evaluation_service = get_evaluation_service()
+        result = await evaluation_service.backfill_llm_correctness(batch_size=batch_size)
+        return result
+
+    except Exception as e:
+        logger.error(f"Error during LLM correctness backfill: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Backfill failed: {str(e)}"
+        )

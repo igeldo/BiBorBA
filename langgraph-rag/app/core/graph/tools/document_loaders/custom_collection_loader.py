@@ -1,11 +1,10 @@
-# core/graph/tools/document_loaders/custom_collection_loader.py
 """
 Custom Collection Document Loader
 Loads documents based on collection configuration
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List
 
 from langchain_core.documents import Document
 
@@ -55,7 +54,6 @@ class CustomCollectionDocumentLoader(BaseDocumentLoader):
         """Load documents from the collection"""
 
         try:
-            # Verify collection exists
             collection = self.collection_manager.get_collection(self.collection_id)
             if not collection:
                 logger.error(f"Collection {self.collection_id} not found")
@@ -63,7 +61,6 @@ class CustomCollectionDocumentLoader(BaseDocumentLoader):
 
             logger.info(f"Loading documents for collection '{collection.name}' (ID: {self.collection_id})")
 
-            # Get all question IDs in this collection
             question_ids = self.collection_manager.get_collection_question_ids(self.collection_id)
 
             if not question_ids:
@@ -72,7 +69,6 @@ class CustomCollectionDocumentLoader(BaseDocumentLoader):
 
             logger.info(f"Found {len(question_ids)} questions in collection")
 
-            # Load Q&A pairs from database
             qa_pairs = self.connector.get_questions_by_ids(question_ids)
 
             if not qa_pairs:
@@ -81,25 +77,20 @@ class CustomCollectionDocumentLoader(BaseDocumentLoader):
 
             logger.info(f"Loaded {len(qa_pairs)} Q&A pairs from database")
 
-            # Convert to LangChain Documents
             documents = self.connector.convert_to_documents(
                 qa_pairs=qa_pairs,
                 include_answers=True,
-                combine_qa=True  # Combine question with best answer
+                combine_qa=True
             )
 
             logger.info(f"Created {len(documents)} LangChain documents")
 
-            # Process metadata
             documents = self._process_collection_metadata(documents, collection.name)
 
-            # Validate documents
             documents = self.validate_documents(documents)
 
-            # Split documents
             documents = self.split_documents(documents, custom_separators=self.stackoverflow_separators)
 
-            # Log statistics
             stats = self.get_stats(documents)
             logger.info(f"Collection loading complete: {stats}")
 
@@ -124,33 +115,13 @@ class CustomCollectionDocumentLoader(BaseDocumentLoader):
             if not hasattr(doc, 'metadata') or doc.metadata is None:
                 doc.metadata = {}
 
-            # Add collection information
             doc.metadata["collection_id"] = self.collection_id
             doc.metadata["collection_name"] = collection_name
             doc.metadata["source_type"] = "custom_collection"
 
-            # Add document type if not present
             if "document_type" not in doc.metadata:
                 doc.metadata["document_type"] = "stackoverflow_qa"
 
         logger.info(f"Added collection metadata to {len(documents)} documents")
         return documents
 
-    def get_collection_info(self) -> Dict[str, Any]:
-        """
-        Get information about the collection
-
-        Returns:
-            Dict with collection information
-        """
-        try:
-            collection = self.collection_manager.get_collection(self.collection_id)
-            if not collection:
-                return {}
-
-            stats = self.collection_manager.get_collection_statistics(self.collection_id)
-            return stats
-
-        except Exception as e:
-            logger.error(f"Error getting collection info: {e}")
-            return {}

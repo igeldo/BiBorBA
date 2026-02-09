@@ -1,12 +1,11 @@
-# core/prompts.py
+from typing import Dict
+
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Dict, Any
 
 
 class PromptManager:
     """Centralized management of all prompts"""
 
-    # Document Grading
     DOCUMENT_GRADER_SYSTEM = """You are a strict grader assessing whether a retrieved document is truly relevant to answer a user question.
 
 RELEVANCE CRITERIA - A document is ONLY relevant if:
@@ -44,13 +43,11 @@ User question: {question}
 
 Assess the document's relevance with binary_score, confidence, and reasoning."""
 
-    # Answer Grading
     ANSWER_GRADER_SYSTEM = """You are a grader assessing whether an answer addresses / resolves a question.
 Give a binary score 'yes' or 'no'. 'Yes' means that the answer resolves the question."""
 
     ANSWER_GRADER_HUMAN = "User question: \n\n {question} \n\n LLM generation: {generation}"
 
-    # Hallucination Grading
     HALLUCINATION_GRADER_SYSTEM = """You are a grader assessing whether an LLM generation is factually supported by retrieved documents.
 
 GRADING GUIDELINES:
@@ -63,7 +60,6 @@ Give a binary score 'yes' or 'no'. 'Yes' = answer is factually supported by thes
 
     HALLUCINATION_GRADER_HUMAN = "Set of facts: \n\n {documents} \n\n LLM generation: {generation}"
 
-    # Question Rewriting
     QUESTION_REWRITER_SYSTEM = """You are a question re-writer that reformulates questions for better vectorstore retrieval.
 
 IMPORTANT RULES:
@@ -86,7 +82,6 @@ Output ONLY the rewritten question, nothing else."""
 
     QUESTION_REWRITER_HUMAN = "Original question: {question}\n\nRewritten question:"
 
-    # Answer Generation
     ANSWER_GENERATOR_SYSTEM = """You are an assistant for question-answering tasks.
 Use the following pieces of retrieved context to answer the question.
 
@@ -103,7 +98,6 @@ If you don't know the answer, just say that you don't know."""
 
     ANSWER_GENERATOR_HUMAN = "Question: {question} \n\nContext: {context}"
 
-    # Pure LLM (No RAG)
     PURE_LLM_SYSTEM = """You are an assistant for question-answering tasks.
 Answer the question to the best of your knowledge based on your training.
 If you don't know the answer, just say that you don't know.
@@ -112,7 +106,34 @@ Your answer should include an explanation for the problem and a possible solutio
 
     PURE_LLM_HUMAN = "Question: {question}"
 
-    # Tool Descriptions
+    CORRECTNESS_EVALUATION_SYSTEM = """You are an expert evaluator assessing the factual correctness of answers.
+
+Compare the GENERATED ANSWER against the REFERENCE ANSWER and rate how factually correct
+and complete the generated answer is.
+
+Scoring criteria:
+- 5: Fully correct - Contains all key facts from reference, no errors
+- 4: Mostly correct - Contains most key facts, minor omissions or imprecisions
+- 3: Partially correct - Contains some correct facts but missing significant information
+- 2: Mostly incorrect - Few correct facts, significant errors or missing core information
+- 1: Completely wrong - Contradicts reference or entirely irrelevant
+
+Important:
+- Focus on FACTUAL correctness, not style or wording
+- The generated answer may use different phrasing but still be correct
+- Penalize factual errors more heavily than missing details
+- Consider the core question being answered"""
+
+    CORRECTNESS_EVALUATION_HUMAN = """QUESTION: {question}
+
+REFERENCE ANSWER (ground truth):
+{reference_answer}
+
+GENERATED ANSWER (to evaluate):
+{generated_answer}
+
+Rate the correctness of the generated answer."""
+
     RETRIEVER_TOOL_DESCRIPTION = "Search and retrieve information for sql questions."
 
     @classmethod
@@ -164,6 +185,14 @@ Your answer should include an explanation for the problem and a possible solutio
         ])
 
     @classmethod
+    def get_correctness_evaluation_prompt(cls) -> ChatPromptTemplate:
+        """Get correctness evaluation prompt (LLM-as-Judge)"""
+        return ChatPromptTemplate.from_messages([
+            ("system", cls.CORRECTNESS_EVALUATION_SYSTEM),
+            ("human", cls.CORRECTNESS_EVALUATION_HUMAN),
+        ])
+
+    @classmethod
     def get_all_prompts(cls) -> Dict[str, str]:
         """Get all prompt templates for inspection"""
         return {
@@ -177,10 +206,11 @@ Your answer should include an explanation for the problem and a possible solutio
             "question_rewriter_human": cls.QUESTION_REWRITER_HUMAN,
             "answer_generator_system": cls.ANSWER_GENERATOR_SYSTEM,
             "answer_generator_human": cls.ANSWER_GENERATOR_HUMAN,
+            "correctness_evaluation_system": cls.CORRECTNESS_EVALUATION_SYSTEM,
+            "correctness_evaluation_human": cls.CORRECTNESS_EVALUATION_HUMAN,
         }
 
 
-# Global prompt manager instance
 prompt_manager = PromptManager()
 
 

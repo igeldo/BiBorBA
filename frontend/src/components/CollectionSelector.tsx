@@ -25,7 +25,7 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
   return (
     <div className="form-group">
       <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-        Collections to Search:
+        Zu durchsuchende Collections:
       </label>
 
       <div style={{
@@ -40,7 +40,7 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
       }}>
         {collections.length === 0 ? (
           <div style={{ color: '#666', fontStyle: 'italic', fontSize: '14px' }}>
-            No collections available. Create collections in the Collection Management tab.
+            Keine Collections verfügbar. Erstellen Sie Collections im Collectionsverwaltungs-Tab.
           </div>
         ) : (
           collections.map((collection, index) => (
@@ -53,7 +53,7 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
                   disabled={disabled}
                   style={{ width: 'auto', margin: 0, flexShrink: 0 }}
                 />
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span>{collection.name}</span>
                   <span style={{
                     padding: '2px 6px',
@@ -65,8 +65,20 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
                     {collection.collection_type}
                   </span>
                   <span style={{ color: '#666', fontSize: '0.9em' }}>
-                    ({collection.question_count} items)
+                    ({collection.question_count} Elemente)
                   </span>
+                  {collection.embedding_model && (
+                    <span style={{
+                      padding: '2px 6px',
+                      borderRadius: '3px',
+                      fontSize: '0.75em',
+                      backgroundColor: '#f0f0f0',
+                      color: '#555',
+                      fontFamily: 'monospace'
+                    }}>
+                      {collection.embedding_model}
+                    </span>
+                  )}
                 </span>
               </label>
             </div>
@@ -76,13 +88,13 @@ export const CollectionSelector: React.FC<CollectionSelectorProps> = ({
 
       {selectedIds.length > 0 && (
         <div style={{ marginTop: '8px', fontSize: '0.9em', color: '#666' }}>
-          {selectedIds.length} collection(s) selected
+          {selectedIds.length} Collection(s) ausgewählt
         </div>
       )}
 
       {selectedIds.length === 0 && (
         <div style={{ marginTop: '8px', fontSize: '0.9em', color: '#999', fontStyle: 'italic' }}>
-          Select at least one collection for retrieval
+          Wählen Sie mindestens eine Collection für die Abfrage
         </div>
       )}
     </div>

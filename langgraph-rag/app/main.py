@@ -1,4 +1,3 @@
-# app/main.py
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -9,7 +8,7 @@ from sqlalchemy import text
 
 from app.api.routes import api_router
 from app.api.routes.evaluation_routes import router as evaluation_router
-from app.config import settings, get_settings
+from app.config import settings, get_settings, Settings
 from app.database import create_tables
 from app.dependencies import (
     get_model_manager,
@@ -18,10 +17,10 @@ from app.dependencies import (
     get_vector_store_service,
     get_evaluation_service,
     get_bert_evaluation_service,
-    get_collection_health_service
+    get_collection_health_service,
+    get_llm_correctness_service
 )
 
-# Configure logging based on settings
 log_level = settings.log_level.upper()
 numeric_level = getattr(logging, log_level, logging.INFO)
 
@@ -39,7 +38,6 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     logger.info("Starting LangGraph RAG API...")
 
-    # Create database tables
     create_tables()
     logger.info("Database tables created")
 
@@ -51,12 +49,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error creating evaluation tables: {e}")
 
-    # Initialize model manager and check health
     model_manager = get_model_manager()
     health_status = model_manager.health_check()
     logger.info(f"Model health check: {health_status}")
 
-    # Initialize services
     embedding_service = get_embedding_service()
     vector_store_service = get_vector_store_service()
     graph_service = get_graph_service()
@@ -65,7 +61,6 @@ async def lifespan(app: FastAPI):
         evaluation_service = get_evaluation_service()
         logger.info("Evaluation service initialized")
 
-        # Check BERT Score availability
         bert_service = get_bert_evaluation_service()
         if bert_service.is_available():
             logger.info(f"BERT Score service available with model: {bert_service.model_type}")
@@ -75,19 +70,48 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Error initializing evaluation service: {e}")
 
+    logger.info("Pre-warming models for batch processing...")
+    try:
+        model_manager.get_chat_model("chat", temperature=0.0)
+        model_manager.get_chat_model("chat", temperature=0.2)
+
+        model_manager.get_chat_model("grader", temperature=0.2)
+        model_manager.get_chat_model("rewriter", temperature=0.2)
+
+        model_manager.get_chat_model("evaluation", temperature=0.0)
+
+        logger.info("Ollama models pre-warmed successfully")
+    except Exception as e:
+        logger.warning(f"Ollama model pre-warming failed: {e}")
+
+    logger.info("Pre-warming BERT evaluation model...")
+    try:
+        from app.evaluation.bert_evaluation import BERTEvaluationService
+        bert_eval_service = BERTEvaluationService()
+        if bert_eval_service.is_available():
+            bert_eval_service.evaluate_answer("test", "test")
+            logger.info("BERT model pre-warmed successfully")
+    except Exception as e:
+        logger.warning(f"BERT model pre-warming failed: {e}")
+
+    logger.info("Pre-warming LLM evaluation model...")
+    try:
+        llm_eval_service = get_llm_correctness_service()
+        if llm_eval_service.is_available():
+            logger.info("LLM evaluation model pre-warmed successfully")
+    except Exception as e:
+        logger.warning(f"LLM evaluation pre-warming failed: {e}")
+
     logger.info("All services initialized")
 
-    # Collection health check at startup
     try:
         from app.database import SessionLocal
 
         health_service = get_collection_health_service()
 
-        # Chroma Collections auflisten
         chroma_collections = embedding_service.list_collections()
         logger.info(f"Found {len(chroma_collections)} Chroma collections")
 
-        # Health Check für alle DB Collections
         db = SessionLocal()
         try:
             summary = health_service.check_all_collections(db)
@@ -98,7 +122,7 @@ async def lifespan(app: FastAPI):
 
             if summary['needs_rebuild'] > 0:
                 logger.warning(
-                    f"⚠️  {summary['needs_rebuild']} collections need rebuild. "
+                    f"{summary['needs_rebuild']} collections need rebuild. "
                     f"Use the frontend 'Rebuild' button to fix."
                 )
         finally:
@@ -109,11 +133,9 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
     logger.info("Shutting down LangGraph RAG API...")
 
 
-# Create FastAPI application
 app = FastAPI(
     title="LangGraph RAG API",
     description="An intelligent document retrieval and question-answering system using LangGraph",
@@ -121,7 +143,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -130,7 +151,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(evaluation_router, prefix="/api/v1")
 
@@ -146,16 +166,14 @@ async def root():
 
 @app.get("/health")
 async def health_check(
-        settings: settings = Depends(get_settings),
+        app_settings: Settings = Depends(get_settings),
         model_manager=Depends(get_model_manager)
 ):
     """Health check endpoint"""
     start_time = time.time()
 
-    # Check model health
     model_health = model_manager.health_check()
 
-    # Check database connection
     try:
         from app.database import SessionLocal
         db = SessionLocal()
@@ -191,8 +209,8 @@ async def health_check(
             "bert_score": bert_available
         },
         "settings": {
-            "ollama_base_url": settings.ollama_base_url,
-            "models_configured": list(settings.ollama_models.keys())
+            "ollama_base_url": app_settings.ollama_base_url,
+            "models_configured": list(app_settings.ollama_models.keys())
         }
     }
 

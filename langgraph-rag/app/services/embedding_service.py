@@ -1,7 +1,5 @@
-# services/embedding_service.py
 import hashlib
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any, TYPE_CHECKING, Callable
@@ -11,7 +9,6 @@ from langchain_core.documents import Document
 
 from app.config import settings
 from app.database import SessionLocal, DocumentEmbedding
-from app.utils.timing import TimingContext
 
 if TYPE_CHECKING:
     from app.core.model_manager import ModelManager
@@ -57,12 +54,9 @@ class EmbeddingService:
         persist_dir = settings.chroma_persist_dir
         persist_dir.mkdir(parents=True, exist_ok=True)
 
-        with TimingContext("Get embeddings model", logger):
-            embeddings = self.model_manager.get_embeddings_model()
+        embeddings = self.model_manager.get_embeddings_model()
 
-        # Check if collection exists on disk
-        with TimingContext(f"Check if collection '{collection_name}' exists on disk", logger):
-            collection_exists = self._collection_exists_on_disk(persist_dir, collection_name)
+        collection_exists = self._collection_exists_on_disk(persist_dir, collection_name)
 
         if force_rebuild or not collection_exists:
             if documents is None:
@@ -70,40 +64,30 @@ class EmbeddingService:
 
             logger.info(f"Creating new vector store: {collection_name}")
 
-            # Delete existing collection if force rebuild
             if force_rebuild and collection_exists:
-                with TimingContext(f"Delete existing collection '{collection_name}'", logger):
-                    self._delete_collection(persist_dir, collection_name, embeddings)
+                self._delete_collection(persist_dir, collection_name, embeddings)
 
-            # Create new vector store with batched embedding
-            with TimingContext(f"Create embeddings for {len(documents)} documents", logger):
-                vector_store = self._create_vector_store_batched(
-                    documents=documents,
-                    collection_name=collection_name,
-                    embeddings=embeddings,
-                    persist_dir=persist_dir,
-                    batch_size=batch_size,
-                    progress_callback=progress_callback
-                )
+            vector_store = self._create_vector_store_batched(
+                documents=documents,
+                collection_name=collection_name,
+                embeddings=embeddings,
+                persist_dir=persist_dir,
+                batch_size=batch_size,
+                progress_callback=progress_callback
+            )
 
-            # Track in database
-            with TimingContext("Track embedding creation in database", logger):
-                self._track_embedding_creation(collection_name, documents)
+            self._track_embedding_creation(collection_name, documents)
 
         else:
             logger.info(f"Loading existing vector store: {collection_name}")
-            with TimingContext(f"Load existing vector store '{collection_name}'", logger):
-                vector_store = Chroma(
-                    collection_name=collection_name,
-                    persist_directory=str(persist_dir),
-                    embedding_function=embeddings
-                )
+            vector_store = Chroma(
+                collection_name=collection_name,
+                persist_directory=str(persist_dir),
+                embedding_function=embeddings
+            )
 
-            # Update last used timestamp
-            with TimingContext("Update last used timestamp in database", logger):
-                self._update_last_used(collection_name)
+            self._update_last_used(collection_name)
 
-        # Cache the vector store
         self._vector_stores[collection_name] = vector_store
         return vector_store
 
@@ -121,7 +105,6 @@ class EmbeddingService:
                 embedding_function=embeddings
             )
 
-            # Try to get collection count
             collection_count = vector_store._collection.count()
             logger.info(f"Collection '{collection_name}' has {collection_count} documents")
 
@@ -184,11 +167,9 @@ class EmbeddingService:
                     "phase": "embedding"
                 })
 
-        # Report initial progress
         report_progress(0, 0)
 
         if total_docs <= batch_size:
-            # Small enough to process in one go
             logger.info(f"Processing {total_docs} documents in single batch")
             result = Chroma.from_documents(
                 documents=documents,
@@ -199,10 +180,8 @@ class EmbeddingService:
             report_progress(1, total_docs)
             return result
 
-        # Process in batches
         logger.info(f"Processing {total_docs} documents in batches of {batch_size}")
 
-        # Create initial vector store with first batch
         first_batch = documents[:batch_size]
         logger.info(f"Creating vector store with first batch (0-{batch_size})")
 
@@ -214,7 +193,6 @@ class EmbeddingService:
         )
         report_progress(1, batch_size)
 
-        # Add remaining documents in batches
         batch_num = 1
         for i in range(batch_size, total_docs, batch_size):
             batch_num += 1
@@ -228,7 +206,6 @@ class EmbeddingService:
                 report_progress(batch_num, batch_end)
             except Exception as e:
                 logger.error(f"Error adding batch {batch_num}: {e}")
-                # Try with smaller batch size on error
                 fallback_size = settings.embedding_fallback_batch_size
                 if len(batch) > fallback_size:
                     logger.info(f"Retrying with smaller sub-batches (size {fallback_size})")
@@ -240,7 +217,6 @@ class EmbeddingService:
                         except Exception as sub_e:
                             logger.error(f"Failed to add sub-batch: {sub_e}")
                             raise
-                    # Report progress after fallback processing
                     report_progress(batch_num, batch_end)
                 else:
                     raise
@@ -252,14 +228,11 @@ class EmbeddingService:
         """Track embedding creation in database"""
         db = SessionLocal()
         try:
-            # Calculate document hash for tracking
             doc_content = "\n".join([doc.page_content for doc in documents])
             doc_hash = hashlib.sha256(doc_content.encode()).hexdigest()
 
-            # Get embedding model name
             embedding_model = settings.ollama_models.get("embedding", "unknown")
 
-            # Check if embedding already tracked
             existing = db.query(DocumentEmbedding).filter(
                 DocumentEmbedding.document_hash == doc_hash
             ).first()
@@ -307,7 +280,6 @@ class EmbeddingService:
         try:
             vector_store = self._vector_stores.get(collection_name)
             if not vector_store:
-                # Try to load it
                 persist_dir = settings.chroma_persist_dir
                 embeddings = self.model_manager.get_embeddings_model()
                 vector_store = Chroma(
@@ -318,7 +290,6 @@ class EmbeddingService:
 
             collection_count = vector_store._collection.count()
 
-            # Get database info
             db = SessionLocal()
             try:
                 db_record = db.query(DocumentEmbedding).filter(
@@ -373,7 +344,6 @@ class EmbeddingService:
 
             for record in old_records:
                 try:
-                    # Delete from ChromaDB
                     persist_dir = settings.chroma_persist_dir
                     embeddings = self.model_manager.get_embeddings_model()
 
@@ -384,7 +354,6 @@ class EmbeddingService:
                     )
                     vector_store.delete_collection()
 
-                    # Remove from app.database
                     db.delete(record)
 
                     logger.info(f"Cleaned up old collection: {record.vector_store_id}")

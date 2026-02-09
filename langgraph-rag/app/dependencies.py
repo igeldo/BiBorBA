@@ -1,9 +1,9 @@
 """
-Zentrale Dependency Injection Konfiguration
+Central dependency injection configuration.
 
-Alle Services werden hier erstellt. Routes importieren nur von hier.
+All services are created here. Routes only import from this module.
 
-Verwendung:
+Usage:
     from app.dependencies import get_graph_service, get_embedding_service
 
     @router.post("/query")
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.config import Settings
     from app.evaluation.bert_evaluation import BERTEvaluationService
     from app.evaluation.evaluation_service import EvaluationService
+    from app.evaluation.llm_correctness_service import LLMCorrectnessService
     from app.services.embedding_service import EmbeddingService
     from app.services.stackoverflow_connector import StackOverflowConnector
     from app.services.collection_manager import CollectionManager
@@ -35,51 +36,54 @@ if TYPE_CHECKING:
     from app.core.graph.tools.vector_store import VectorStoreService
 
 
-# =============================================================================
-# Application-Scoped Singletons (teure Ressourcen, stateless)
-# =============================================================================
 
 @lru_cache()
 def get_model_manager() -> "ModelManager":
-    """Singleton - lädt teure ML-Modelle."""
+    """Singleton - loads expensive ML models."""
     from app.core.model_manager import ModelManager
     return ModelManager()
 
 
 @lru_cache()
 def get_prompt_manager() -> "PromptManager":
-    """Singleton - read-only Prompt-Templates."""
+    """Singleton - read-only prompt templates."""
     from app.core.prompts import PromptManager
     return PromptManager()
 
 
 @lru_cache()
 def get_settings() -> "Settings":
-    """Singleton - Konfiguration aus Environment."""
+    """Singleton - configuration from environment."""
     from app.config import Settings
     return Settings()
 
 
 @lru_cache()
 def get_bert_service() -> "BERTEvaluationService":
-    """Singleton - lädt teures BERT-Modell."""
+    """Singleton - loads expensive BERT model."""
     from app.evaluation.bert_evaluation import BERTEvaluationService
     return BERTEvaluationService()
 
 
-# Alias für Konsistenz
 def get_bert_evaluation_service() -> "BERTEvaluationService":
-    """Alias für get_bert_service."""
+    """Alias for get_bert_service."""
     return get_bert_service()
 
 
-# =============================================================================
-# Request-Scoped Services (mit DB-Session)
-# =============================================================================
+@lru_cache()
+def get_llm_correctness_service() -> "LLMCorrectnessService":
+    """Singleton - LLM-as-Judge for correctness evaluation."""
+    from app.evaluation.llm_correctness_service import LLMCorrectnessService
+    return LLMCorrectnessService(
+        model_manager=get_model_manager(),
+        prompt_manager=get_prompt_manager()
+    )
+
+
 
 @lru_cache()
 def get_embedding_service() -> "EmbeddingService":
-    """Singleton - nutzt ModelManager für Embeddings."""
+    """Singleton - uses ModelManager for embeddings."""
     from app.services.embedding_service import EmbeddingService
     return EmbeddingService(model_manager=get_model_manager())
 
@@ -87,7 +91,7 @@ def get_embedding_service() -> "EmbeddingService":
 def get_stackoverflow_connector(
     db: Session = Depends(get_db)
 ) -> "StackOverflowConnector":
-    """Factory - DB-Zugriff für StackOverflow-Daten."""
+    """Factory - DB access for StackOverflow data."""
     from app.services.stackoverflow_connector import StackOverflowConnector
     return StackOverflowConnector(db=db)
 
@@ -95,53 +99,48 @@ def get_stackoverflow_connector(
 def get_collection_manager(
     db: Session = Depends(get_db)
 ) -> "CollectionManager":
-    """Factory - verwaltet Custom Collections."""
+    """Factory - manages custom collections."""
     from app.services.collection_manager import CollectionManager
     return CollectionManager(db=db)
 
 
-# =============================================================================
-# Stateless Services (keine DB-Session nötig)
-# =============================================================================
 
 def get_graph_service() -> "GraphService":
-    """Factory - Graph-Ausführung."""
+    """Factory - graph execution."""
     from app.services.graph_service import GraphService
     return GraphService()
 
 
 def get_evaluation_service() -> "EvaluationService":
-    """Factory - Evaluation Service mit BERT."""
+    """Factory - evaluation service with BERT."""
     from app.evaluation.evaluation_service import EvaluationService
     return EvaluationService()
 
 
 def get_collection_health_service() -> "CollectionHealthService":
-    """Factory - Collection Health Check."""
+    """Factory - collection health check."""
     from app.services.collection_health_service import CollectionHealthService
     return CollectionHealthService()
 
 
 def get_vector_store_service() -> "VectorStoreService":
-    """Factory - Vector Store Operations."""
+    """Factory - vector store operations."""
     from app.core.graph.tools.vector_store import VectorStoreService
     return VectorStoreService()
 
 
 def get_batch_query_service() -> "BatchQueryService":
-    """Factory - Batch Query Service."""
+    """Factory - batch query service."""
     from app.services.batch_query_service import BatchQueryService
     return BatchQueryService()
 
 
-# =============================================================================
-# Hilfsfunktionen für Tests
-# =============================================================================
 
 def clear_all_caches():
-    """Leert Singleton-Caches für Tests."""
+    """Clear singleton caches for tests."""
     get_model_manager.cache_clear()
     get_prompt_manager.cache_clear()
     get_settings.cache_clear()
     get_bert_service.cache_clear()
     get_embedding_service.cache_clear()
+    get_llm_correctness_service.cache_clear()

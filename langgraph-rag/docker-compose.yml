@@ -12,10 +12,10 @@ services:
       - CHROMA_PERSIST_DIR=/app/data/chroma
       - LOG_LEVEL=INFO
       - CORS_ORIGINS=["http://localhost:5173", "http://localhost:3000"]
+      - EXPORT_DIR=/app/exports
+      - RETRIEVAL_K=8
     volumes:
       - ./app:/app/app
-      - ./core:/app/core
-      - ./services:/app/services
       - ./resources:/app/resources
       - chroma_data:/app/data/chroma
     depends_on:
@@ -76,7 +76,7 @@ services:
     networks:
       - langgraph_network
 
-  # pgAdmin für LangGraph DB
+  # pgAdmin for LangGraph DB
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: langgraph_pgadmin

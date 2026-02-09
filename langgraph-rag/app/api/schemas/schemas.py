@@ -1,4 +1,3 @@
-# api/schemas.py
 
 from enum import Enum
 from typing import Dict, List, Any, Optional
@@ -24,6 +23,9 @@ class SortField(str, Enum):
     CREATION_DATE = "creation_date"
     SCORE = "score"
     VIEW_COUNT = "view_count"
+    TITLE = "title"
+    EVALUATION_COUNT = "evaluation_count"
+    LATEST_EVALUATION_DATE = "latest_evaluation_date"
 
 
 class SortOrder(str, Enum):
@@ -32,22 +34,15 @@ class SortOrder(str, Enum):
     DESC = "desc"
 
 
-class StackOverflowQueryRequest(BaseModel):
-    """Request schema for StackOverflow queries"""
+class QueryRequest(BaseModel):
+    """Request schema for free-text queries"""
     question: str = Field(..., description="The question to ask")
     session_id: str = Field(..., description="Session identifier")
     graph_type: GraphType = Field(default=GraphType.ADAPTIVE_RAG, description="Type of graph to use for processing")
-    include_stackoverflow: bool = Field(default=True, description="Include StackOverflow data in search")
-    stackoverflow_filters: Optional[Dict[str, Any]] = Field(
-        default={
-            "min_score": 0,
-            "tags": [],
-            "only_accepted_answers": False,
-            "limit": 50
-        },
-        description="Filters for StackOverflow data"
-    )
+    collection_ids: Optional[List[int]] = Field(default=None, description="Optional collection IDs for retrieval")
     llm_config: Optional[Dict[str, Any]] = Field(default={}, description="LLM configuration")
+
+
 
 
 class CollectionQueryRequest(BaseModel):
@@ -155,7 +150,7 @@ class ScrapeRequest(BaseModel):
 class ScrapeJobStatus(BaseModel):
     """Status of a scraping job"""
     job_id: str
-    status: str  # running, completed, failed
+    status: str
     started_at: str
     completed_at: Optional[str] = None
     progress: Dict[str, Any]
@@ -246,20 +241,27 @@ class BertScoreResult(BaseModel):
     precision: Optional[float] = None
     recall: Optional[float] = None
     f1: Optional[float] = None
-    model_type: Optional[str] = None  # e.g., "bert-base-uncased"
+    model_type: Optional[str] = None
+
+
+class LLMCorrectnessResult(BaseModel):
+    """LLM Correctness evaluation results"""
+    score: Optional[float] = None
+    model: Optional[str] = None
 
 
 class BatchQueryResult(BaseModel):
     """Result for a single question in batch"""
     question_id: int
     question_title: str
-    question_body: Optional[str] = None  # NEU: Vollständiger Fragentext
-    stack_overflow_id: Optional[int] = None  # NEU: Für Link zu SO
+    question_body: Optional[str] = None
+    stack_overflow_id: Optional[int] = None
     graph_type: str = Field(default="adaptive_rag", description="Graph type used for this evaluation")
-    status: str  # success, failed, skipped
+    status: str
     generated_answer: Optional[str] = None
     reference_answer: Optional[str] = None
     bert_score: Optional[BertScoreResult] = None
+    llm_correctness: Optional[LLMCorrectnessResult] = None
     graph_trace: Optional[List[str]] = None
     iteration_metrics: Optional[IterationMetrics] = None
     node_timings: Optional[Dict[str, float]] = None
@@ -283,7 +285,7 @@ class BatchQueryProgress(BaseModel):
 class BatchQueryJobStatus(BaseModel):
     """Complete batch job status"""
     job_id: str
-    status: str  # running, completed, failed, cancelled
+    status: str
     started_at: str
     completed_at: Optional[str] = None
     progress: BatchQueryProgress
@@ -320,3 +322,47 @@ class QuestionWithCollections(BaseModel):
         default_factory=list,
         description="Collections this question belongs to"
     )
+    evaluation_count: int = Field(
+        default=0,
+        description="Number of generated answers (AnswerEvaluation records) for this question"
+    )
+    latest_evaluation_date: Optional[datetime] = Field(
+        default=None,
+        description="Date of the most recent evaluation/generated answer"
+    )
+
+
+class CurrentConfigInfo(BaseModel):
+    """Current model configuration"""
+    llm_model: str
+    llm_correctness_model: str
+    embedding_model: str
+
+
+class GraphTypeMissingInfo(BaseModel):
+    """Missing questions info for a graph type"""
+    count: int
+    question_ids: List[int]
+
+
+class MissingQuestionInfo(BaseModel):
+    """Information about a missing question"""
+    stack_overflow_id: int
+    title: str
+    tags: List[str]
+    score: int
+    collections: List[QuestionCollectionInfo]
+
+
+class PaginatedMissingQuestionsResponse(BaseModel):
+    """Paginated response for missing questions"""
+    current_config: CurrentConfigInfo
+    total_questions: int
+    missing_by_graph_type: Dict[str, GraphTypeMissingInfo]
+    questions: List[MissingQuestionInfo]
+    page: int
+    page_size: int
+    total_missing: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool

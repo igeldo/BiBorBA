@@ -1,4 +1,3 @@
-# services/batch_query_service.py
 """
 Service for batch processing of StackOverflow questions
 """
@@ -60,7 +59,6 @@ class BatchQueryService:
             Dictionary with batch results
         """
         import asyncio
-        # Run the async version in a new event loop (for thread pool execution)
         return asyncio.run(self._process_batch_async(
             job_id=job_id,
             question_ids=question_ids,
@@ -99,11 +97,9 @@ class BatchQueryService:
         db = SessionLocal()
         results = []
 
-        # Default to ADAPTIVE_RAG if not specified
         if graph_types is None or len(graph_types) == 0:
             graph_types = [GraphType.ADAPTIVE_RAG]
 
-        # Total number of processing runs = questions × graph_types
         total_runs = len(question_ids) * len(graph_types)
         processed_count = 0
 
@@ -111,9 +107,7 @@ class BatchQueryService:
             for question_id in question_ids:
                 for graph_type in graph_types:
                     try:
-                        # Update progress - processing question with specific graph type
                         if progress_callback:
-                            # Get question title for display
                             question_data = self.so_connector.get_question_by_id(question_id)
                             progress_callback({
                                 "processed": processed_count,
@@ -121,7 +115,6 @@ class BatchQueryService:
                                 "current_question_title": f"{question_data.get('title', 'Unknown') if question_data else 'Unknown'} ({graph_type.value})"
                             })
 
-                        # Process single question with specific graph type
                         result = await self._process_single_question(
                             question_id=question_id,
                             session_id=session_id,
@@ -134,7 +127,6 @@ class BatchQueryService:
                         results.append(result)
                         processed_count += 1
 
-                        # Update progress and send result for incremental display
                         if progress_callback:
                             progress_callback({
                                 "processed": processed_count,
@@ -143,7 +135,7 @@ class BatchQueryService:
                                 "skipped": sum(1 for r in results if r["status"] == "skipped"),
                                 "current_question_id": None,
                                 "current_question_title": None,
-                                "result": result  # Send completed result immediately
+                                "result": result
                             })
 
                     except Exception as e:
@@ -159,14 +151,13 @@ class BatchQueryService:
                         results.append(failed_result)
                         processed_count += 1
 
-                        # Update progress and send failed result for incremental display
                         if progress_callback:
                             progress_callback({
                                 "processed": processed_count,
                                 "successful": sum(1 for r in results if r["status"] == "success"),
                                 "failed": sum(1 for r in results if r["status"] == "failed"),
                                 "skipped": sum(1 for r in results if r["status"] == "skipped"),
-                                "result": failed_result  # Send failed result immediately
+                                "result": failed_result
                             })
 
             return {
@@ -208,7 +199,6 @@ class BatchQueryService:
 
         start_time = time.time()
 
-        # 1. Fetch question from database
         question_data = self.so_connector.get_question_by_id(question_id)
         if not question_data:
             return {
@@ -226,9 +216,7 @@ class BatchQueryService:
         question_body = question_data.get("body", "")
         full_question = f"{question_text}\n\n{question_body}" if question_body else question_text
 
-        # 2. Execute graph to generate answer (MOVED UP - happens FIRST)
         try:
-            # Pure LLM: No retrieval, just direct LLM call
             if graph_type == GraphType.PURE_LLM:
                 logger.info(f"Using Pure LLM (no retrieval) for question {question_id}")
                 graph_result = await self.graph_service.execute_query(
@@ -237,9 +225,7 @@ class BatchQueryService:
                     graph_type=graph_type,
                     model_config=llm_config
                 )
-            # RAG modes (Simple RAG or Adaptive RAG): Graph handles retrieval
             else:
-                # Graph will retrieve documents from collections or use standard retriever
                 if collection_ids:
                     logger.info(f"Using {len(collection_ids)} collections with {graph_type.value} (Graph handles retrieval)")
                 else:
@@ -275,16 +261,15 @@ class BatchQueryService:
                 "completed_at": datetime.utcnow().isoformat()
             }
 
-        # 3. OPTIONAL: Try to get reference answer for BERT-Score (AFTER generation)
         reference_answer = self._get_reference_answer(question_data)
         bert_score = None
+        llm_correctness = None
         evaluation_id = None
 
         if reference_answer:
-            # We have a reference answer - can do BERT evaluation
             try:
                 logger.info(f"Reference answer available for question {question_id} - computing BERT score")
-                evaluation_result = self.evaluation_service.evaluate_generated_answer(
+                evaluation_result = await self.evaluation_service.evaluate_generated_answer(
                     question_text=full_question,
                     generated_answer=generated_answer,
                     reference_answer=reference_answer,
@@ -293,7 +278,8 @@ class BatchQueryService:
                     graph_type=graph_type.value,
                     graph_execution_id=graph_execution_id,
                     model_config=llm_config,
-                    processing_time_ms=int((time.time() - start_time) * 1000)
+                    processing_time_ms=int((time.time() - start_time) * 1000),
+                    collection_ids=collection_ids
                 )
 
                 bert_score = {
@@ -305,10 +291,14 @@ class BatchQueryService:
                       evaluation_result.bert_recall is not None and
                       evaluation_result.bert_f1 is not None) else None
 
+                llm_correctness = {
+                    "score": evaluation_result.llm_correctness_score,
+                    "model": evaluation_result.llm_correctness_model
+                } if evaluation_result.llm_correctness_score is not None else None
+
                 evaluation_id = evaluation_result.id
                 logger.info(f"BERT score computed for question {question_id}: F1={bert_score['f1'] if bert_score else 'N/A'}")
 
-                # Save retrieved documents for comparison view
                 if evaluation_id and retrieved_documents:
                     self._save_retrieved_documents(db, evaluation_id, retrieved_documents)
 
@@ -317,10 +307,8 @@ class BatchQueryService:
                 bert_score = None
                 evaluation_id = None
         else:
-            # No reference answer - skip BERT evaluation but keep generated answer
             logger.info(f"No reference answer for question {question_id} - skipping BERT evaluation (answer still generated)")
 
-        # 4. Return result (with or without BERT score)
         processing_time = int((time.time() - start_time) * 1000)
 
         return {
@@ -329,17 +317,18 @@ class BatchQueryService:
             "question_body": question_body,
             "stack_overflow_id": question_data.get("stack_overflow_id"),
             "graph_type": graph_type.value,
-            "status": "success",  # Always "success" if generation worked
+            "status": "success",
             "generated_answer": generated_answer,
-            "reference_answer": reference_answer,  # May be None
-            "bert_score": bert_score,  # May be None
+            "reference_answer": reference_answer,
+            "bert_score": bert_score,
+            "llm_correctness": llm_correctness,
             "graph_trace": graph_trace,
             "node_timings": node_timings,
             "rewritten_question": rewritten_question,
             "iteration_metrics": iteration_metrics,
             "retrieved_documents": retrieved_documents,
             "processing_time_ms": processing_time,
-            "evaluation_id": evaluation_id,  # May be None
+            "evaluation_id": evaluation_id,
             "completed_at": datetime.utcnow().isoformat()
         }
 
@@ -352,7 +341,6 @@ class BatchQueryService:
         if not answers:
             return None
 
-        # Try accepted answer first
         accepted = next(
             (a for a in answers if a.get("is_accepted")),
             None
@@ -360,7 +348,6 @@ class BatchQueryService:
         if accepted:
             return accepted["body"]
 
-        # Fallback to highest-scored answer
         sorted_answers = sorted(
             answers,
             key=lambda a: a.get("score", 0),

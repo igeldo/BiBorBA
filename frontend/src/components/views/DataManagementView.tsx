@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { apiService } from '../../services/api'
 import type { ScrapeParams, ScrapeJobStatus, ScraperStats, PaginatedQuestionsResponse } from '../../types'
+import { SortableHeader, HeaderCell, TablePagination, StackOverflowLink, TagList } from '../table'
+import { TABLE_PAGE_SIZES, DEFAULT_PAGE_SIZE, TABLE_COLORS, getScoreDisplayColor } from '../../theme/tableConstants'
 
 export const DataManagementView: React.FC = () => {
   const [scrapeParams, setScrapeParams] = useState<ScrapeParams>({
@@ -15,11 +17,11 @@ export const DataManagementView: React.FC = () => {
   const [scraperStats, setScraperStats] = useState<ScraperStats | null>(null)
   const [paginatedQuestions, setPaginatedQuestions] = useState<PaginatedQuestionsResponse | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [tagFilter, setTagFilter] = useState('')
   const [minScoreFilter, setMinScoreFilter] = useState<number | undefined>(undefined)
   const [sortBy, setSortBy] = useState('creation_date')
-  const [sortOrder, setSortOrder] = useState('desc')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [dataLoading, setDataLoading] = useState(false)
   const [apiTestResult, setApiTestResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
@@ -113,8 +115,8 @@ export const DataManagementView: React.FC = () => {
     <div className="data-management-view">
       {/* API Test & Stats Section */}
       <div className="query-section">
-        <h2>📊 Stackoverflow Data Management</h2>
-        <p>Scrape, manage and explore Stackoverflow questions in the database</p>
+        <h2>📊 Stackoverflow-Datenverwaltung</h2>
+        <p>Durchsuchen, verwalten und erkunden Sie Stackoverflow-Fragen in der Datenbank</p>
 
         <div style={{ display: 'flex', gap: '15px', marginTop: '20px', flexWrap: 'wrap' }}>
           <button
@@ -122,13 +124,13 @@ export const DataManagementView: React.FC = () => {
             disabled={dataLoading}
             style={{ background: '#28a745' }}
           >
-            Test API Connection
+            API-Verbindung testen
           </button>
           <button
             onClick={loadScraperStats}
             disabled={dataLoading}
           >
-            Refresh Statistics
+            Statistiken aktualisieren
           </button>
         </div>
 
@@ -140,8 +142,8 @@ export const DataManagementView: React.FC = () => {
             borderRadius: '8px',
             border: `2px solid ${apiTestResult.api_available ? '#28a745' : '#dc3545'}`
           }}>
-            <strong>API Status:</strong> {apiTestResult.api_available ? '✓ Connected' : '✗ Not available'}<br />
-            <strong>Quota Remaining:</strong> {apiTestResult.quota_remaining || 'N/A'}
+            <strong>API-Status:</strong> {apiTestResult.api_available ? '✓ Verbunden' : '✗ Nicht verfügbar'}<br />
+            <strong>Verbleibendes Kontingent:</strong> {apiTestResult.quota_remaining || 'N/A'}
           </div>
         )}
 
@@ -153,19 +155,19 @@ export const DataManagementView: React.FC = () => {
             marginTop: '20px'
           }}>
             <div className="stat-card">
-              <div className="stat-label">Total Questions</div>
+              <div className="stat-label">Gesamt-Fragen</div>
               <div className="stat-value">{scraperStats.total_questions}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Total Answers</div>
+              <div className="stat-label">Gesamt-Antworten</div>
               <div className="stat-value">{scraperStats.total_answers}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Accepted Answers</div>
+              <div className="stat-label">Akzeptierte Antworten</div>
               <div className="stat-value">{scraperStats.accepted_answers}</div>
             </div>
             <div className="stat-card">
-              <div className="stat-label">Avg Question Score</div>
+              <div className="stat-label">Durchschn. Fragen-Score</div>
               <div className="stat-value">{scraperStats.avg_question_score?.toFixed(1)}</div>
             </div>
           </div>
@@ -174,11 +176,11 @@ export const DataManagementView: React.FC = () => {
 
       {/* Scraping Section */}
       <div className="query-section" style={{ marginTop: '20px' }}>
-        <h3>🔍 Scrape New Data</h3>
+        <h3>🔍 Neue Daten abrufen</h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
           <div className="form-group">
-            <label>Count (1-1000):</label>
+            <label>Anzahl (1-1000):</label>
             <input
               type="number"
               min="1"
@@ -190,7 +192,7 @@ export const DataManagementView: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Days Back (1-3650):</label>
+            <label>Tage zurück (1-3650):</label>
             <input
               type="number"
               min="1"
@@ -214,7 +216,7 @@ export const DataManagementView: React.FC = () => {
         </div>
 
         <div className="form-group" style={{ marginTop: '15px' }}>
-          <label>Tags (comma-separated):</label>
+          <label>Tags (kommagetrennt):</label>
           <input
             type="text"
             value={scrapeParams.tags.join(', ')}
@@ -225,7 +227,7 @@ export const DataManagementView: React.FC = () => {
         </div>
 
         <div className="form-group" style={{ marginTop: '15px' }}>
-          <label>Start Page (for continuation):</label>
+          <label>Startseite (für Fortsetzung):</label>
           <input
             type="number"
             min="1"
@@ -234,7 +236,7 @@ export const DataManagementView: React.FC = () => {
             disabled={dataLoading}
           />
           <small style={{ display: 'block', color: '#666', marginTop: '5px' }}>
-            Start at page X to continue from previous batch (100 questions per page)
+            Beginnen Sie bei Seite X, um vom vorherigen Batch fortzufahren (100 Fragen pro Seite)
           </small>
         </div>
 
@@ -246,7 +248,7 @@ export const DataManagementView: React.FC = () => {
             onChange={(e) => setScrapeParams({...scrapeParams, only_accepted_answers: e.target.checked})}
             disabled={dataLoading}
           />
-          <label htmlFor="onlyAccepted">Only questions with accepted answers (⚠️ may result in 0 results)</label>
+          <label htmlFor="onlyAccepted">Nur Fragen mit akzeptierten Antworten (⚠️ kann zu 0 Ergebnissen führen)</label>
         </div>
 
         <button
@@ -255,7 +257,7 @@ export const DataManagementView: React.FC = () => {
           style={{ marginTop: '15px', background: '#f48024' }}
         >
           {dataLoading && <span className="loading"></span>}
-          {dataLoading ? 'Scraping...' : 'Start Scraping'}
+          {dataLoading ? 'Wird abgerufen...' : 'Abruf starten'}
         </button>
 
         {scrapeJobStatus && (
@@ -266,19 +268,19 @@ export const DataManagementView: React.FC = () => {
             borderRadius: '8px',
             border: '2px solid #007bff'
           }}>
-            <h4>Job Status: {scrapeJobStatus.status}</h4>
+            <h4>Job-Status: {scrapeJobStatus.status}</h4>
             {scrapeJobStatus.progress && (
               <div style={{ marginTop: '10px' }}>
-                <p><strong>Questions:</strong> {scrapeJobStatus.progress.questions_fetched} fetched, {scrapeJobStatus.progress.questions_stored} stored</p>
-                <p><strong>Answers:</strong> {scrapeJobStatus.progress.answers_fetched} fetched, {scrapeJobStatus.progress.answers_stored} stored</p>
+                <p><strong>Fragen:</strong> {scrapeJobStatus.progress.questions_fetched} abgerufen, {scrapeJobStatus.progress.questions_stored} gespeichert</p>
+                <p><strong>Antworten:</strong> {scrapeJobStatus.progress.answers_fetched} abgerufen, {scrapeJobStatus.progress.answers_stored} gespeichert</p>
                 {scrapeJobStatus.progress.errors > 0 && (
-                  <p style={{ color: '#dc3545' }}><strong>Errors:</strong> {scrapeJobStatus.progress.errors}</p>
+                  <p style={{ color: '#dc3545' }}><strong>Fehler:</strong> {scrapeJobStatus.progress.errors}</p>
                 )}
               </div>
             )}
             {scrapeJobStatus.result && (
               <div style={{ marginTop: '10px', padding: '10px', background: '#d4edda', borderRadius: '4px' }}>
-                <strong>✓ Completed:</strong> {scrapeJobStatus.result.questions_stored} questions and {scrapeJobStatus.result.answers_stored} answers stored
+                <strong>✓ Abgeschlossen:</strong> {scrapeJobStatus.result.questions_stored} Fragen und {scrapeJobStatus.result.answers_stored} Antworten gespeichert
               </div>
             )}
           </div>
@@ -287,12 +289,12 @@ export const DataManagementView: React.FC = () => {
 
       {/* Questions Browse Section */}
       <div className="query-section" style={{ marginTop: '20px' }}>
-        <h3>📋 Browse Questions</h3>
+        <h3>📋 Fragen durchsuchen</h3>
 
         {/* Filters */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginTop: '15px' }}>
           <div className="form-group">
-            <label>Filter by Tags:</label>
+            <label>Nach Tags filtern:</label>
             <input
               type="text"
               value={tagFilter}
@@ -310,23 +312,6 @@ export const DataManagementView: React.FC = () => {
               onChange={(e) => setMinScoreFilter(e.target.value ? parseInt(e.target.value) : undefined)}
             />
           </div>
-
-          <div className="form-group">
-            <label>Sort By:</label>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="creation_date">Creation Date</option>
-              <option value="score">Score</option>
-              <option value="view_count">View Count</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Order:</label>
-            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
-              <option value="desc">Descending</option>
-              <option value="asc">Ascending</option>
-            </select>
-          </div>
         </div>
 
         {/* Questions Table */}
@@ -342,31 +327,87 @@ export const DataManagementView: React.FC = () => {
                 boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
               }}>
                 <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #dee2e6' }}>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Title</th>
-                    <th style={{ padding: '12px', textAlign: 'left' }}>Tags</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Score</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Views</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Answers</th>
-                    <th style={{ padding: '12px', textAlign: 'center' }}>Created</th>
+                  <tr style={{ background: TABLE_COLORS.headerBg }}>
+                    <SortableHeader
+                      column="title"
+                      label="Titel"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('asc')
+                        }
+                        setCurrentPage(1)
+                      }}
+                    />
+                    <HeaderCell>Tags</HeaderCell>
+                    <SortableHeader
+                      column="score"
+                      label="Score"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setCurrentPage(1)
+                      }}
+                      align="center"
+                    />
+                    <SortableHeader
+                      column="view_count"
+                      label="Ansichten"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setCurrentPage(1)
+                      }}
+                      align="center"
+                    />
+                    <HeaderCell align="center">Antworten</HeaderCell>
+                    <SortableHeader
+                      column="creation_date"
+                      label="Erstellt"
+                      sortBy={sortBy}
+                      sortOrder={sortOrder}
+                      onSort={(col) => {
+                        if (sortBy === col) {
+                          setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')
+                        } else {
+                          setSortBy(col)
+                          setSortOrder('desc')
+                        }
+                        setCurrentPage(1)
+                      }}
+                      align="center"
+                    />
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedQuestions.items.map((q) => (
-                    <tr key={q.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <tr key={q.id} style={{ borderBottom: `1px solid ${TABLE_COLORS.rowBorder}` }}>
                       <td style={{ padding: '12px' }}>
-                        <a href={`https://stackoverflow.com/questions/${q.stack_overflow_id}`} target="_blank" rel="noopener noreferrer" style={{ color: '#007bff', textDecoration: 'none' }}>
-                          {q.title}
-                        </a>
+                        <StackOverflowLink
+                          stackOverflowId={q.stack_overflow_id}
+                          title={q.title}
+                        />
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                          {q.tags.slice(0, 3).map((tag, idx) => (
-                            <span key={idx} className="tag">{tag}</span>
-                          ))}
-                        </div>
+                        <TagList tags={q.tags} maxTags={3} />
                       </td>
-                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: q.score > 5 ? '#28a745' : '#666' }}>
+                      <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: getScoreDisplayColor(q.score) }}>
                         {q.score}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'center' }}>{q.view_count}</td>
@@ -381,66 +422,34 @@ export const DataManagementView: React.FC = () => {
             </div>
 
             {/* Pagination Controls */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: '20px',
-              padding: '15px',
-              background: '#f8f9fa',
-              borderRadius: '8px'
-            }}>
-              <div>
-                Showing {paginatedQuestions.items.length} of {paginatedQuestions.total} questions
-                (Page {paginatedQuestions.page} of {paginatedQuestions.total_pages})
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                  disabled={!paginatedQuestions.has_prev || dataLoading}
-                  style={{ padding: '8px 16px' }}
-                >
-                  ← Previous
-                </button>
-
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(parseInt(e.target.value))
-                    setCurrentPage(1)
-                  }}
-                  style={{ padding: '8px' }}
-                >
-                  <option value="10">10 per page</option>
-                  <option value="20">20 per page</option>
-                  <option value="50">50 per page</option>
-                  <option value="100">100 per page</option>
-                </select>
-
-                <button
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                  disabled={!paginatedQuestions.has_next || dataLoading}
-                  style={{ padding: '8px 16px' }}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
+            <TablePagination
+              page={paginatedQuestions.page}
+              pageSize={pageSize}
+              totalItems={paginatedQuestions.total}
+              totalPages={paginatedQuestions.total_pages}
+              hasNext={paginatedQuestions.has_next}
+              hasPrev={paginatedQuestions.has_prev}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size)
+                setCurrentPage(1)
+              }}
+              pageSizeOptions={TABLE_PAGE_SIZES}
+            />
           </>
         )}
 
         {dataLoading && !paginatedQuestions && (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <span className="loading"></span>
-            <p>Loading questions...</p>
+            <p>Fragen werden geladen...</p>
           </div>
         )}
       </div>
 
       {error && (
         <div className="error" style={{ marginTop: '20px' }}>
-          <strong>Error:</strong> {error}
+          <strong>Fehler:</strong> {error}
           <button
             onClick={() => setError(null)}
             style={{ marginLeft: '10px', background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}

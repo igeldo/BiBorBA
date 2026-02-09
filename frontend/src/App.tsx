@@ -5,6 +5,7 @@ import { CollectionManagementView } from './components/views/CollectionManagemen
 import { BatchQuerySelection } from './components/views/BatchQuerySelection'
 import { BatchQueryProgress } from './components/views/BatchQueryProgress'
 import { ComparisonView } from './components/views/ComparisonView'
+import { MissingQuestionsView } from './components/views/MissingQuestionsView'
 import { QueryView } from './components/query/QueryView'
 import { ViewSwitcher } from './components/layout/ViewSwitcher'
 import type { ViewType } from './types'
@@ -101,7 +102,7 @@ function App() {
       {/* Header */}
       <div className="header">
         <h1>🧠 LangGraph RAG System</h1>
-        <p>Intelligent Document Retrieval and Question Answering with Multi-Source Support</p>
+        <p>Intelligente Dokumentenabfrage und Frage-Antwort mit Multi-Source-Unterstützung</p>
 
         {/* View Switcher */}
         <ViewSwitcher
@@ -142,6 +143,17 @@ function App() {
 
       {/* Graph Comparison Mode */}
       {currentView === 'comparison' && <ComparisonView />}
+
+      {/* Missing Questions Review Mode */}
+      {currentView === 'missing-questions' && (
+        <MissingQuestionsView
+          onStartBatch={(jobId) => {
+            setBatchJobId(jobId)
+            localStorage.setItem('current_batch_job_id', jobId)
+            setCurrentView('batch-progress')
+          }}
+        />
+      )}
 
       <style>{`
         .rewritten-question-notice {

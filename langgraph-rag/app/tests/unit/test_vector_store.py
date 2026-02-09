@@ -1,9 +1,9 @@
 """
-Tests für Vector Store Fehlerbehandlung
+Unit tests for Vector Store error handling.
 
-Testet nur die kritischen Fehlerfälle:
-- Nicht existierende Collection
-- Unbekannter Collection-Typ
+Tests critical error cases:
+- Non-existent collection handling
+- Unknown collection type handling
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -12,12 +12,22 @@ from app.database import CollectionConfiguration
 
 
 class TestCollectionRebuildErrors:
-    """Test Fehlerbehandlung bei rebuild_custom_collection"""
+    """Tests for error handling in rebuild_custom_collection."""
 
     @patch('app.database.SessionLocal')
     @patch('app.services.collection_manager.CollectionManager')
     def test_nonexistent_collection_raises_error(self, mock_cm_class, mock_session):
-        """Nicht existierende Collection wirft ValueError"""
+        """
+        Test that rebuilding a non-existent collection raises ValueError.
+
+        Assume:
+            - Collection with ID 99999 does not exist
+            - CollectionManager.get_collection returns None
+
+        Expect:
+            - ValueError is raised
+            - Error message contains "not found"
+        """
         mock_session.return_value = MagicMock()
 
         mock_manager = MagicMock()
@@ -34,13 +44,22 @@ class TestCollectionRebuildErrors:
     @patch('app.database.SessionLocal')
     @patch('app.services.collection_manager.CollectionManager')
     def test_unknown_collection_type_raises_error(self, mock_cm_class, mock_session):
-        """Unbekannter Collection-Typ wirft ValueError"""
+        """
+        Test that rebuilding a collection with unknown type raises ValueError.
+
+        Assume:
+            - Collection exists with an unsupported type ("xml")
+
+        Expect:
+            - ValueError is raised
+            - Error message contains "Unknown collection type"
+        """
         mock_session.return_value = MagicMock()
 
         mock_collection = Mock(spec=CollectionConfiguration)
         mock_collection.id = 1
         mock_collection.name = "Unknown"
-        mock_collection.collection_type = "xml"  # Nicht unterstützt
+        mock_collection.collection_type = "xml"
 
         mock_manager = MagicMock()
         mock_manager.get_collection.return_value = mock_collection
@@ -55,12 +74,22 @@ class TestCollectionRebuildErrors:
 
 
 class TestGetRetrieverErrors:
-    """Test Fehlerbehandlung bei get_custom_collection_retriever"""
+    """Tests for error handling in get_custom_collection_retriever."""
 
     @patch('app.database.SessionLocal')
     @patch('app.services.collection_manager.CollectionManager')
     def test_nonexistent_collection_raises_error(self, mock_cm_class, mock_session):
-        """Nicht existierende Collection wirft ValueError"""
+        """
+        Test that getting retriever for non-existent collection raises ValueError.
+
+        Assume:
+            - Collection with ID 99999 does not exist
+            - CollectionManager.get_collection returns None
+
+        Expect:
+            - ValueError is raised
+            - Error message contains "not found"
+        """
         mock_session.return_value = MagicMock()
 
         mock_manager = MagicMock()

@@ -67,7 +67,6 @@ export const useQuery = (options: UseQueryOptions = {}): UseQueryReturn => {
         const request: QueryRequest = {
           question: question.trim(),
           session_id: sessionId,
-          include_stackoverflow: false,
           graph_type: selectedGraphType,
           llm_config: { temperature }
         }

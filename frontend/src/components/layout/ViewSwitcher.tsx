@@ -13,11 +13,12 @@ interface ViewButton {
 }
 
 const VIEW_BUTTONS: ViewButton[] = [
-  { id: 'query', label: 'Query Mode' },
-  { id: 'data', label: 'SO Data Management' },
-  { id: 'collection-management', label: 'Collection Management' },
-  { id: 'batch-queries', label: 'Batch Processing', matchViews: ['batch-progress'] },
-  { id: 'comparison', label: 'Graph Comparison' }
+  { id: 'query', label: 'Abfragemodus' },
+  { id: 'data', label: 'SO-Datenverwaltung' },
+  { id: 'collection-management', label: 'Collectionsverwaltung' },
+  { id: 'batch-queries', label: 'Batch-Verarbeitung', matchViews: ['batch-progress'] },
+  { id: 'missing-questions', label: 'Fehlende Fragen' },
+  { id: 'comparison', label: 'Antworten-Vergleich' }
 ]
 
 export const ViewSwitcher: React.FC<ViewSwitcherProps> = ({

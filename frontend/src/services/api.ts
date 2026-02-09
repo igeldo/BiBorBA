@@ -30,7 +30,15 @@ import type {
   QuestionWithCollections,
   GraphComparisonResponse,
   ComparisonMetricsSummary,
-  PaginatedEvaluatedQuestionsResponse
+  PaginatedEvaluatedQuestionsResponse,
+  FullExportRequest,
+  StatisticsExportRequest,
+  ComparisonExportRequest,
+  ExportJobStartResponse,
+  ExportJobStatus,
+  CurrentModels,
+  MissingQuestionsResponse,
+  AggregatedStatisticsResponse
 } from '../types'
 
 export class ApiService {
@@ -41,11 +49,7 @@ export class ApiService {
   }
 
   async query(request: QueryRequest): Promise<QueryResponse> {
-    const endpoint = request.include_stackoverflow
-      ? '/api/v1/query/multi-source'
-      : '/api/v1/query'
-
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -232,6 +236,12 @@ export class ApiService {
   async getCollectionsList(): Promise<Collection[]> {
     const response = await fetch(`${this.baseUrl}/api/v1/collection-management/collections`)
     if (!response.ok) throw new Error('Failed to get collections')
+    return response.json()
+  }
+
+  async getCurrentModels(): Promise<CurrentModels> {
+    const response = await fetch(`${this.baseUrl}/api/v1/collection-management/current-models`)
+    if (!response.ok) throw new Error('Failed to get current models')
     return response.json()
   }
 
@@ -470,6 +480,8 @@ export class ApiService {
     sort_by?: 'creation_date' | 'score' | 'view_count'
     sort_order?: 'asc' | 'desc'
     only_without_collections?: boolean
+    not_in_collection_ids?: number[]
+    only_without_evaluations?: boolean
   }): Promise<{
     items: QuestionWithCollections[]
     total: number
@@ -482,7 +494,11 @@ export class ApiService {
     const queryParams = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined) {
-        queryParams.append(key, value.toString())
+        if (key === 'not_in_collection_ids' && Array.isArray(value)) {
+          queryParams.append(key, value.join(','))
+        } else {
+          queryParams.append(key, value.toString())
+        }
       }
     })
 
@@ -496,6 +512,36 @@ export class ApiService {
   }
 
   // Graph Comparison API Methods
+
+  async getAvailableModels(): Promise<{
+    llm_models: string[]
+    embedding_models: string[]
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/comparisons/available-models`)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch available models: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  async getAggregatedStatistics(params?: {
+    group_by?: ('graph_type' | 'llm_model' | 'embedding_model')[]
+  }): Promise<AggregatedStatisticsResponse> {
+    const queryParams = new URLSearchParams()
+    if (params?.group_by && params.group_by.length > 0) {
+      queryParams.set('group_by', params.group_by.join(','))
+    }
+
+    const url = `${this.baseUrl}/api/v1/comparisons/aggregated-statistics${
+      queryParams.toString() ? `?${queryParams}` : ''
+    }`
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to fetch aggregated statistics: ${response.status}`)
+    }
+    return response.json()
+  }
 
   async getComparisonForQuestion(questionId: number): Promise<GraphComparisonResponse> {
     const response = await fetch(
@@ -520,23 +566,17 @@ export class ApiService {
   async getAllEvaluatedQuestions(params?: {
     page?: number
     page_size?: number
-    has_multiple_graph_types?: boolean
     sort_by?: string
     sort_order?: string
     tags?: string
-    min_score?: number
     title_search?: string
   }): Promise<PaginatedEvaluatedQuestionsResponse> {
     const queryParams = new URLSearchParams()
     if (params?.page !== undefined) queryParams.set('page', params.page.toString())
     if (params?.page_size !== undefined) queryParams.set('page_size', params.page_size.toString())
-    if (params?.has_multiple_graph_types !== undefined) {
-      queryParams.set('has_multiple_graph_types', params.has_multiple_graph_types.toString())
-    }
     if (params?.sort_by) queryParams.set('sort_by', params.sort_by)
     if (params?.sort_order) queryParams.set('sort_order', params.sort_order)
     if (params?.tags) queryParams.set('tags', params.tags)
-    if (params?.min_score !== undefined) queryParams.set('min_score', params.min_score.toString())
     if (params?.title_search) queryParams.set('title_search', params.title_search)
 
     const url = `${this.baseUrl}/api/v1/comparisons/questions${
@@ -613,6 +653,126 @@ export class ApiService {
     if (!response.ok) {
       const error = await response.text()
       throw new Error(`Failed to rate query: ${error}`)
+    }
+    return response.json()
+  }
+
+  // Export API Methods
+
+  async startFullExport(request: FullExportRequest): Promise<ExportJobStartResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/full`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to start full export: ${error}`)
+    }
+    return response.json()
+  }
+
+  async startStatisticsExport(request: StatisticsExportRequest): Promise<ExportJobStartResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/statistics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to start statistics export: ${error}`)
+    }
+    return response.json()
+  }
+
+  async startComparisonExport(request: ComparisonExportRequest): Promise<ExportJobStartResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/comparison`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to start comparison export: ${error}`)
+    }
+    return response.json()
+  }
+
+  async getExportJobStatus(jobId: string): Promise<ExportJobStatus> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/jobs/${jobId}`)
+    if (!response.ok) {
+      throw new Error(`Failed to get export job status: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  async listExportJobs(status?: string, limit: number = 20): Promise<ExportJobStatus[]> {
+    const params = new URLSearchParams()
+    if (status) params.append('status', status)
+    params.append('limit', limit.toString())
+
+    const response = await fetch(`${this.baseUrl}/api/v1/export/jobs?${params}`)
+    if (!response.ok) {
+      throw new Error(`Failed to list export jobs: ${response.status}`)
+    }
+    return response.json()
+  }
+
+  async downloadExport(jobId: string): Promise<Blob> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/jobs/${jobId}/download`)
+    if (!response.ok) {
+      throw new Error(`Failed to download export: ${response.status}`)
+    }
+    return response.blob()
+  }
+
+  async deleteExportJob(jobId: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/v1/export/jobs/${jobId}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      throw new Error(`Failed to delete export job: ${response.status}`)
+    }
+  }
+
+  // Missing Questions Coverage API
+
+  async getMissingQuestions(params?: {
+    graphTypes?: string[]
+    excludeCollectionIds?: number[]
+    page?: number
+    pageSize?: number
+    sortBy?: string
+    sortOrder?: 'asc' | 'desc'
+  }): Promise<MissingQuestionsResponse> {
+    const queryParams = new URLSearchParams()
+    if (params?.graphTypes && params.graphTypes.length > 0) {
+      queryParams.append('graph_types', params.graphTypes.join(','))
+    }
+    if (params?.excludeCollectionIds && params.excludeCollectionIds.length > 0) {
+      queryParams.append('exclude_collection_ids', params.excludeCollectionIds.join(','))
+    }
+    if (params?.page !== undefined) {
+      queryParams.append('page', params.page.toString())
+    }
+    if (params?.pageSize !== undefined) {
+      queryParams.append('page_size', params.pageSize.toString())
+    }
+    if (params?.sortBy) {
+      queryParams.append('sort_by', params.sortBy)
+    }
+    if (params?.sortOrder) {
+      queryParams.append('sort_order', params.sortOrder)
+    }
+
+    const url = `${this.baseUrl}/api/v1/batch-queries/missing-questions${
+      queryParams.toString() ? `?${queryParams}` : ''
+    }`
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to get missing questions: ${response.status} - ${error}`)
     }
     return response.json()
   }

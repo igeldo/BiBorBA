@@ -1,4 +1,3 @@
-# core/graph/adaptive_graph.py
 import logging
 from typing import Dict, Any
 
@@ -69,7 +68,6 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
         transform_attempts = state.get("transform_attempts", 0)
 
         if not filtered_documents:
-            # Check if we've exceeded transform retry limit
             if transform_attempts >= settings.max_transform_retries:
                 logger.warning(
                     f"---NO RELEVANT DOCUMENTS AFTER {transform_attempts} ATTEMPTS, "
@@ -77,14 +75,12 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
                 )
                 return "no_docs_fallback"
 
-            # Still have retries left, try transforming query
             logger.info(
                 f"---DOCUMENTS NOT RELEVANT (attempt {transform_attempts + 1}/{settings.max_transform_retries}), "
                 f"TRANSFORM QUERY---"
             )
             return "transform_query"
         else:
-            # We have relevant documents, so generate answer
             logger.info("---DECISION: GENERATE---")
             return "generate"
 
@@ -105,13 +101,11 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
             logger.warning("---MAX ITERATIONS REACHED, RETURNING BEST-EFFORT ANSWER---")
             return "max_iterations"
 
-        # Check if generation is grounded in documents
         hallucination_score = hallucination_grader_node(state)
 
         if hallucination_score.get("is_grounded", False):
             logger.info("---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---")
 
-            # Check question-answering
             logger.info("---GRADE GENERATION vs QUESTION---")
             answer_score = answer_grader_node(state)
 
@@ -146,20 +140,17 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
             question = state["question"]
             model_config = state.get("model_config", {})
 
-            # Get chat model and pure LLM prompt
             llm = model_manager.get_chat_model("chat", **model_config)
             prompt = prompt_manager.get_pure_llm_prompt()
 
-            # Create chain (no document context)
             llm_chain = prompt | llm | StrOutputParser()
 
-            # Generate answer
             generation = llm_chain.invoke({"question": question})
 
             return {
                 "documents": [],
                 "question": question,
-                "original_question": state.get("original_question", question),  # Preserve original
+                "original_question": state.get("original_question", question),
                 "generation": generation,
                 "model_config": model_config,
                 "collection_ids": state.get("collection_ids", []),
@@ -187,14 +178,11 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
 
         return mark_max_iterations
 
-    # Create fallback nodes
     fallback_node = create_fallback_node()
     no_docs_fallback_node = create_no_docs_fallback_node(model_manager, prompt_manager)
 
-    # Create the workflow
     workflow = StateGraph(GraphState)
 
-    # Define the nodes
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("generate", generate_node)
@@ -202,7 +190,6 @@ def create_adaptive_graph(retriever_type: RetrieverType = RetrieverType.PDF) -> 
     workflow.add_node("fallback", fallback_node)
     workflow.add_node("no_docs_fallback", no_docs_fallback_node)
 
-    # Build graph
     workflow.add_edge(START, "retrieve")
     workflow.add_edge("retrieve", "grade_documents")
 

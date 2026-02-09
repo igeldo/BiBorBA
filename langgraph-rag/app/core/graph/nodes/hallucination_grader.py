@@ -3,7 +3,6 @@ from pydantic import BaseModel, Field
 import logging
 
 from app.config import settings
-from app.utils.timing import TimingContext
 from app.core.graph.utils import format_docs
 
 logger = logging.getLogger(__name__)
@@ -37,10 +36,9 @@ def create_hallucination_grader_node(model_manager, prompt_manager):
             logger.warning("No documents to check hallucination against")
             return {"is_grounded": False}
 
-        with TimingContext("Get hallucination grader model", logger):
-            llm = model_manager.get_structured_model("grader", GradeHallucinations, format="json")
-            prompt = prompt_manager.get_hallucination_grader_prompt()
-            grader = prompt | llm
+        llm = model_manager.get_structured_model("grader", GradeHallucinations, format="json")
+        prompt = prompt_manager.get_hallucination_grader_prompt()
+        grader = prompt | llm
 
         total_docs = len(documents)
         batch_num = 0
@@ -57,15 +55,14 @@ def create_hallucination_grader_node(model_manager, prompt_manager):
 
             logger.info(f"Hallucination check batch {batch_num}: docs {batch_start + 1}-{batch_end} of {total_docs}")
 
-            with TimingContext(f"LLM call: Hallucination grading batch {batch_num}", logger):
-                try:
-                    score = grader.invoke({
-                        "documents": formatted_batch,
-                        "generation": generation
-                    })
-                except Exception as e:
-                    logger.error(f"Hallucination grading batch {batch_num} failed: {e}")
-                    continue
+            try:
+                score = grader.invoke({
+                    "documents": formatted_batch,
+                    "generation": generation
+                })
+            except Exception as e:
+                logger.error(f"Hallucination grading batch {batch_num} failed: {e}")
+                continue
 
             logger.debug(f"Batch {batch_num} result: {score.binary_score}")
 

@@ -6,3 +6,5 @@
 /langgraph-rag/logs/
 /langgraph-rag/tests/data/
 /langgraph-rag/app/tests/data/
+/langgraph-rag/statistic/ergebnisse/plots/
+/langgraph-rag/docs/

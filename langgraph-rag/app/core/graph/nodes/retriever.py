@@ -1,13 +1,10 @@
-# core/graph/nodes/retriever.py (Updated with collection support)
-from typing import Dict, Any, List
 import logging
-import time
+from typing import Dict, Any
 
+from app.api.schemas.schemas import RetrieverType
 from app.config import settings
 from app.core.graph.tools.retriever_tool import get_retriever_tool
 from app.core.graph.tools.vector_store import get_custom_collection_retriever
-from app.api.schemas.schemas import RetrieverType
-from app.utils.timing import TimingContext
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +35,13 @@ def create_retriever_node(retriever_type: RetrieverType):
                 all_documents = []
                 for coll_id in collection_ids:
                     try:
-                        with TimingContext(f"Retrieve from collection {coll_id}", logger):
-                            retriever = get_custom_collection_retriever(
-                                collection_id=coll_id,
-                                search_kwargs={"k": settings.retrieval_k}
-                            )
-                            docs = retriever.invoke(question)
-                            all_documents.extend(docs)
-                            logger.info(f"Retrieved {len(docs)} docs from collection {coll_id}")
+                        retriever = get_custom_collection_retriever(
+                            collection_id=coll_id,
+                            search_kwargs={"k": settings.retrieval_k}
+                        )
+                        docs = retriever.invoke(question)
+                        all_documents.extend(docs)
+                        logger.info(f"Retrieved {len(docs)} docs from collection {coll_id}")
                     except Exception as e:
                         logger.warning(f"Failed to retrieve from collection {coll_id}: {e}")
 
@@ -53,11 +49,8 @@ def create_retriever_node(retriever_type: RetrieverType):
                 logger.info(f"Total documents from collections: {len(all_documents)}")
 
             else:
-                with TimingContext("Get retriever tool", logger):
-                    retriever_tool = get_retriever_tool(retriever_type)
-
-                with TimingContext(f"Invoke retriever for query: '{question[:50]}...'", logger):
-                    raw_documents = retriever_tool.invoke(question)
+                retriever_tool = get_retriever_tool(retriever_type)
+                raw_documents = retriever_tool.invoke(question)
 
             logger.debug(f"Raw retrieval result type: {type(raw_documents)}")
             logger.debug(f"Raw retrieval result: {raw_documents}")
@@ -95,7 +88,7 @@ def create_retriever_node(retriever_type: RetrieverType):
             return {
                 "documents": documents,
                 "question": question,
-                "original_question": state.get("original_question", question),  # Preserve original
+                "original_question": state.get("original_question", question),
                 "generation": state.get("generation", ""),
                 "model_config": state.get("model_config", {}),
                 "collection_ids": collection_ids,

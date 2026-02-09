@@ -1,12 +1,11 @@
-from typing import Dict, Any
-from pydantic import BaseModel, Field
+import asyncio
 import logging
 import time
-import asyncio
+from typing import Dict, Any
+
+from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.utils.timing import TimingContext
-from app.core.graph.utils import format_docs
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +54,9 @@ def create_document_grader_node(model_manager, prompt_manager):
 
         logger.info(f"Normalized to {len(normalized_docs)} Document objects")
 
-        with TimingContext("Get grader model and prompt", logger):
-            llm = model_manager.get_structured_model("grader", GradeDocuments, format="json")
-            prompt = prompt_manager.get_document_grader_prompt()
-            grader = prompt | llm
+        llm = model_manager.get_structured_model("grader", GradeDocuments, format="json")
+        prompt = prompt_manager.get_document_grader_prompt()
+        grader = prompt | llm
 
         async def grade_single_doc(doc, doc_index):
             """Grade a single document asynchronously"""
@@ -77,7 +75,7 @@ def create_document_grader_node(model_manager, prompt_manager):
                             "question": question,
                             "document": content
                         })
-                        break  # Success
+                        break
                     except RuntimeError as e:
                         error_msg = str(e).lower()
                         # httpcore raises RuntimeError if TCPTransport closure, but no specific exception
@@ -85,7 +83,7 @@ def create_document_grader_node(model_manager, prompt_manager):
 
                         if is_tcp_error and attempt < max_retries - 1:
                             logger.warning(f"TCPTransport error on doc {doc_index + 1}, retry {attempt + 1}/{max_retries}")
-                            await asyncio.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                            await asyncio.sleep(0.1 * (attempt + 1))
                             continue
                         else:
                             raise
@@ -94,7 +92,7 @@ def create_document_grader_node(model_manager, prompt_manager):
                         raise
 
                 doc_duration = (time.perf_counter() - doc_start) * 1000
-                logger.debug(f"✅ LLM call for document {doc_index + 1} grading: {doc_duration:.1f}ms")
+                logger.debug(f"LLM call for document {doc_index + 1} grading: {doc_duration:.1f}ms")
 
                 grade = score.binary_score
                 confidence = score.confidence
@@ -123,7 +121,7 @@ def create_document_grader_node(model_manager, prompt_manager):
 
         async def grade_all_docs():
             """Grade all documents in batches to avoid TCP connection pool exhaustion"""
-            batch_size = settings.document_grading_batch_size  # Default: 4
+            batch_size = settings.document_grading_batch_size
             all_results = []
 
             for batch_start in range(0, len(normalized_docs), batch_size):
@@ -148,7 +146,6 @@ def create_document_grader_node(model_manager, prompt_manager):
         grading_start = time.perf_counter()
         logger.debug(f"START: Grading {len(normalized_docs)} documents in batches of {settings.document_grading_batch_size}")
 
-        # This avoids conflicts with existing event loops (e.g., uvloop in FastAPI)
         from concurrent.futures import ThreadPoolExecutor
 
         def run_async_grading():
@@ -165,7 +162,6 @@ def create_document_grader_node(model_manager, prompt_manager):
         for doc, is_relevant, error, confidence, reasoning in grading_results:
             content = doc.page_content if hasattr(doc, 'page_content') else str(doc)
 
-            # Store grading details for debugging
             document_grades.append({
                 "content_preview": content[:100] + "..." if len(content) > 100 else content,
                 "is_relevant": is_relevant,
@@ -187,7 +183,7 @@ def create_document_grader_node(model_manager, prompt_manager):
         return {
             "documents": filtered_docs,
             "question": question,
-            "original_question": state.get("original_question", question),  # Preserve original
+            "original_question": state.get("original_question", question),
             "generation": state.get("generation", ""),
             "model_config": state.get("model_config", {}),
             "collection_ids": state.get("collection_ids", []),

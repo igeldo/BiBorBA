@@ -28,11 +28,17 @@ export const getSourceColor = (source: string): string => {
 }
 
 export const getBertScoreColor = (score: number): string => {
-  if (score >= 0.9) return '#28a745'
-  if (score >= 0.8) return '#5cb85c'
-  if (score >= 0.7) return '#ffc107'
-  if (score >= 0.6) return '#fd7e14'
-  return '#dc3545'
+  if (score >= 0.75) return '#28a745'  // Grün
+  if (score >= 0.50) return '#ffc107'  // Gelb
+  if (score >= 0.25) return '#fd7e14'  // Orange
+  return '#dc3545'                      // Rot
+}
+
+export const getLLMCorrectnessColor = (score: number): string => {
+  if (score >= 0.75) return '#28a745'  // Green (score 4-5)
+  if (score >= 0.50) return '#ffc107'  // Yellow (score 3)
+  if (score >= 0.25) return '#fd7e14'  // Orange (score 2)
+  return '#dc3545'                      // Red (score 1)
 }
 
 export const formatCollectionName = (type: string): string => {

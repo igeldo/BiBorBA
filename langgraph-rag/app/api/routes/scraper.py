@@ -1,4 +1,3 @@
-# app/api/routes/scraper.py
 """
 StackOverflow Scraper Endpoints
 - Scrape new questions and answers from Stack Overflow API
@@ -15,13 +14,11 @@ from sqlalchemy.orm import Session
 from app.api.schemas.schemas import (
     ScrapeRequest,
     ScrapeJobStatus,
-    ScrapeJobResult,
     ScrapeStats
 )
-from app.api.middleware import safe_error_handler
 from app.database import get_db
-from app.services.stackoverflow_scrapper import get_stackoverflow_scraper
 from app.services.job_manager import get_scraper_manager, JobStatus
+from app.services.stackoverflow_scrapper import get_stackoverflow_scraper
 
 router = APIRouter(prefix="/scraper", tags=["StackOverflow Scraper"])
 logger = logging.getLogger(__name__)

@@ -1,9 +1,8 @@
-# app/api/routes/comparison_routes.py
 """
-Comparison-bezogene Endpoints
+Comparison-related endpoints.
 
-Endpoints zum Vergleichen von Antworten verschiedener Graph-Typen
-für die gleiche Frage.
+Endpoints for comparing answers from different graph types
+for the same question.
 """
 
 import logging
@@ -15,25 +14,69 @@ from sqlalchemy.orm import Session
 from app.api.schemas.comparison_schemas import (
     GraphComparisonResponse,
     ComparisonMetricsSummary,
-    EvaluatedQuestionListItem,
     EvaluationWithGraphType,
     AcceptedAnswerInfo,
     RetrievedDocumentSchema,
     IterationMetricsSchema,
-    PaginatedEvaluatedQuestionsResponse,
     RerunRequest,
-    RerunResponse
+    RerunResponse,
+    AggregatedStatisticsResponse,
+    ConfigurationStatistics,
+    EvaluatedQuestionListItemExtended,
+    PaginatedEvaluatedQuestionsExtendedResponse,
+    ArchitectureMetrics,
+    MetricsByArchitecture
 )
 from app.api.schemas.schemas import GraphType
-from app.api.middleware import safe_error_handler
 from app.database import get_db, SOQuestion
-from app.services.comparison_service import get_comparison_service
 from app.dependencies import get_batch_query_service
 from app.services.batch_query_service import BatchQueryService
+from app.services.comparison_service import get_comparison_service
 from app.services.job_manager import get_batch_query_manager
 
 router = APIRouter(prefix="/comparisons", tags=["Comparisons"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/aggregated-statistics", response_model=AggregatedStatisticsResponse)
+async def get_aggregated_statistics(
+        group_by: Optional[str] = Query(
+            "graph_type",
+            description="Comma-separated list of fields to group by: graph_type, llm_model, embedding_model"
+        ),
+        db: Session = Depends(get_db)
+):
+    """
+    Get aggregated statistics across all evaluations.
+
+    Groups statistics by the specified fields and returns mean/std for key metrics.
+
+    Args:
+        group_by: Comma-separated grouping fields (default: graph_type)
+
+    Returns:
+        AggregatedStatisticsResponse with statistics per configuration
+    """
+    try:
+        group_by_list = [g.strip() for g in group_by.split(',') if g.strip()]
+        valid_fields = {'graph_type', 'llm_model', 'embedding_model'}
+        group_by_list = [g for g in group_by_list if g in valid_fields]
+
+        if not group_by_list:
+            group_by_list = ['graph_type']
+
+        comparison_service = get_comparison_service(db)
+        result = comparison_service.get_aggregated_statistics(group_by=group_by_list)
+
+        return AggregatedStatisticsResponse(
+            statistics=[ConfigurationStatistics(**stat) for stat in result["statistics"]],
+            total_evaluations=result["total_evaluations"],
+            group_by=result["group_by"]
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting aggregated statistics: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
 
 
 @router.get("/questions/{question_id}", response_model=GraphComparisonResponse)
@@ -42,23 +85,21 @@ async def get_comparison_for_question(
         db: Session = Depends(get_db)
 ):
     """
-    Alle Evaluierungen für eine SO-Frage abrufen, gruppiert nach graph_type
+    Fetch all evaluations for a SO question, grouped by graph_type
 
     Args:
         question_id: StackOverflow Question ID (so_questions.stack_overflow_id)
 
     Returns:
-        GraphComparisonResponse mit allen Evaluations gruppiert nach graph_type
+        GraphComparisonResponse with all evaluations grouped by graph_type
     """
     try:
         comparison_service = get_comparison_service(db)
         result = comparison_service.get_comparisons_by_question_id(question_id)
 
-        # Convert to response model
         question = result["question"]
         evaluations_by_graph_type = result["evaluations_by_graph_type"]
 
-        # Convert evaluations to response format with additional details
         formatted_evals = {}
         for graph_type, evaluations in evaluations_by_graph_type.items():
             formatted_evals[graph_type] = []
@@ -91,7 +132,11 @@ async def get_comparison_for_question(
                         node_timings=details.get("node_timings"),
                         rewritten_question=details.get("rewritten_question"),
                         retrieved_documents=retrieved_docs,
-                        iteration_metrics=iteration_metrics
+                        iteration_metrics=iteration_metrics,
+                        llm_model=eval.llm_model,
+                        embedding_model=details.get("embedding_model"),
+                        llm_correctness_score=eval.llm_correctness_score,
+                        llm_correctness_model=eval.llm_correctness_model
                     )
                 )
 
@@ -128,13 +173,13 @@ async def get_comparison_metrics(
         db: Session = Depends(get_db)
 ):
     """
-    Aggregierte Metriken für eine SO-Frage über alle Graph-Typen
+    Aggregated metrics for a SO question across all graph types
 
     Args:
         question_id: StackOverflow Question ID
 
     Returns:
-        List of ComparisonMetricsSummary - Metriken pro Graph-Type
+        List of ComparisonMetricsSummary - metrics per graph type
     """
     try:
         comparison_service = get_comparison_service(db)
@@ -150,15 +195,13 @@ async def get_comparison_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to get metrics: {str(e)}")
 
 
-@router.get("/questions", response_model=PaginatedEvaluatedQuestionsResponse)
+@router.get("/questions", response_model=PaginatedEvaluatedQuestionsExtendedResponse)
 async def get_all_evaluated_questions(
         page: int = Query(1, ge=1, description="Page number (1-indexed)"),
-        page_size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
-        has_multiple_graph_types: bool = Query(False, description="Only questions with >1 graph type"),
-        sort_by: str = Query("creation_date", description="Sort by: creation_date, score, evaluation_count, question_id"),
+        page_size: int = Query(20, ge=1, le=200, description="Items per page (max 200)"),
+        sort_by: str = Query("creation_date", description="Sort by: creation_date, score, evaluation_count, question_id, adaptive_rag_f1, simple_rag_f1, pure_llm_f1"),
         sort_order: str = Query("desc", description="Sort order: asc, desc"),
         tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
-        min_score: Optional[int] = Query(None, description="Minimum score filter"),
         title_search: Optional[str] = Query(None, description="Partial title search (case-insensitive)"),
         db: Session = Depends(get_db)
 ):
@@ -166,10 +209,10 @@ async def get_all_evaluated_questions(
     Liste aller SO-Fragen die evaluiert wurden (paginiert)
 
     Returns:
-        Paginated list of evaluated questions with metadata
+        Paginated list of evaluated questions with metadata and best metrics per architecture
     """
     try:
-        valid_sort_fields = ["creation_date", "score", "evaluation_count", "question_id"]
+        valid_sort_fields = ["creation_date", "score", "evaluation_count", "question_id", "adaptive_rag_f1", "simple_rag_f1", "pure_llm_f1"]
         if sort_by not in valid_sort_fields:
             sort_by = "creation_date"
 
@@ -180,16 +223,35 @@ async def get_all_evaluated_questions(
         result = comparison_service.get_all_evaluated_questions(
             page=page,
             page_size=page_size,
-            has_multiple_graph_types=has_multiple_graph_types,
             sort_by=sort_by,
             sort_order=sort_order,
             tags=tags,
-            min_score=min_score,
             title_search=title_search
         )
 
-        return PaginatedEvaluatedQuestionsResponse(
-            items=[EvaluatedQuestionListItem(**q) for q in result["items"]],
+        items = []
+        for q in result["items"]:
+            metrics_by_arch = None
+            if q.get("metrics_by_architecture"):
+                metrics_by_arch = MetricsByArchitecture(
+                    adaptive_rag=ArchitectureMetrics(**q["metrics_by_architecture"]["adaptive_rag"]) if q["metrics_by_architecture"].get("adaptive_rag") else None,
+                    simple_rag=ArchitectureMetrics(**q["metrics_by_architecture"]["simple_rag"]) if q["metrics_by_architecture"].get("simple_rag") else None,
+                    pure_llm=ArchitectureMetrics(**q["metrics_by_architecture"]["pure_llm"]) if q["metrics_by_architecture"].get("pure_llm") else None
+                )
+
+            items.append(EvaluatedQuestionListItemExtended(
+                question_id=q["question_id"],
+                question_title=q["question_title"],
+                available_graph_types=q["available_graph_types"],
+                total_evaluations=q["total_evaluations"],
+                has_multiple_graph_types=q["has_multiple_graph_types"],
+                tags=q["tags"],
+                score=q["score"],
+                metrics_by_architecture=metrics_by_arch
+            ))
+
+        return PaginatedEvaluatedQuestionsExtendedResponse(
+            items=items,
             total=result["total"],
             page=result["page"],
             page_size=result["page_size"],

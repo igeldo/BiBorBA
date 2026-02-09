@@ -1,4 +1,3 @@
-# services/comparison_service.py
 """
 Service for comparing different graph types on the same questions
 
@@ -10,21 +9,20 @@ This service provides methods to:
 
 import logging
 import math
-from typing import Dict, Any, List, Optional
 from collections import defaultdict
-from datetime import datetime
+from typing import Dict, Any, List, Optional
 
-from sqlalchemy import func, desc, asc
+from sqlalchemy import func, desc, asc, null, cast, String
 from sqlalchemy.orm import Session
 
-from app.database import SOQuestion, GraphExecution, RetrievedDocument
+from app.database import SOQuestion, GraphExecution, RetrievedDocument, CollectionConfiguration
 from app.evaluation.models import AnswerEvaluation
 
 logger = logging.getLogger(__name__)
 
 
 class ComparisonService:
-    """Service für Query-Vergleiche über Graph-Typen"""
+    """Service for query comparisons across graph types"""
 
     def __init__(self, db: Session):
         self.db = db
@@ -34,7 +32,7 @@ class ComparisonService:
         stackoverflow_question_id: int
     ) -> Dict[str, Any]:
         """
-        Alle Evaluierungen für eine SO-Frage abrufen, gruppiert nach graph_type
+        Fetch all evaluations for a SO question, grouped by graph_type
 
         Args:
             stackoverflow_question_id: ID of the StackOverflow question
@@ -53,7 +51,6 @@ class ComparisonService:
         """
         logger.info(f"Getting comparisons for question {stackoverflow_question_id}")
 
-        # Get the question
         question = self.db.query(SOQuestion).filter(
             SOQuestion.stack_overflow_id == stackoverflow_question_id
         ).first()
@@ -61,21 +58,17 @@ class ComparisonService:
         if not question:
             raise ValueError(f"Question with id {stackoverflow_question_id} not found")
 
-        # Get all evaluations for this question
         evaluations = self.db.query(AnswerEvaluation).filter(
             AnswerEvaluation.stackoverflow_question_id == stackoverflow_question_id
         ).order_by(AnswerEvaluation.created_at.desc()).all()
 
-        # Group by graph_type
         evaluations_by_graph_type = defaultdict(list)
         for evaluation in evaluations:
-            graph_type = evaluation.graph_type or "adaptive_rag"  # Default for old data
+            graph_type = evaluation.graph_type or "adaptive_rag"
             evaluations_by_graph_type[graph_type].append(evaluation)
 
-        # Calculate metrics summary
         metrics_summary = self._calculate_metrics_summary(evaluations_by_graph_type)
 
-        # Find accepted answer
         accepted_answer = None
         if question.answers:
             for answer in question.answers:
@@ -95,7 +88,7 @@ class ComparisonService:
         stackoverflow_question_id: int
     ) -> List[Dict[str, Any]]:
         """
-        Aggregierte Metriken für eine SO-Frage über alle Graph-Typen
+        Aggregated metrics for a SO question across all graph types
 
         Args:
             stackoverflow_question_id: ID of the StackOverflow question
@@ -115,7 +108,6 @@ class ComparisonService:
         """
         logger.info(f"Getting comparison metrics for question {stackoverflow_question_id}")
 
-        # Query evaluations grouped by graph_type
         results = self.db.query(
             AnswerEvaluation.graph_type,
             func.avg(AnswerEvaluation.bert_f1).label('avg_bert_f1'),
@@ -123,6 +115,7 @@ class ComparisonService:
             func.avg(AnswerEvaluation.bert_recall).label('avg_bert_recall'),
             func.avg(AnswerEvaluation.processing_time_ms).label('avg_processing_time_ms'),
             func.avg(AnswerEvaluation.confidence_score).label('avg_confidence_score'),
+            func.avg(AnswerEvaluation.llm_correctness_score).label('avg_llm_correctness'),
             func.count(AnswerEvaluation.id).label('evaluation_count'),
             func.max(AnswerEvaluation.created_at).label('latest_evaluation_date')
         ).filter(
@@ -139,6 +132,7 @@ class ComparisonService:
                 "avg_bert_precision": float(row.avg_bert_precision) if row.avg_bert_precision else None,
                 "avg_bert_recall": float(row.avg_bert_recall) if row.avg_bert_recall else None,
                 "avg_processing_time_ms": float(row.avg_processing_time_ms) if row.avg_processing_time_ms else None,
+                "avg_llm_correctness": float(row.avg_llm_correctness) if row.avg_llm_correctness else None,
                 "avg_confidence_score": float(row.avg_confidence_score) if row.avg_confidence_score else None,
                 "evaluation_count": row.evaluation_count,
                 "latest_evaluation_date": row.latest_evaluation_date
@@ -150,11 +144,9 @@ class ComparisonService:
         self,
         page: int = 1,
         page_size: int = 20,
-        has_multiple_graph_types: bool = False,
         sort_by: str = "creation_date",
         sort_order: str = "desc",
         tags: Optional[str] = None,
-        min_score: Optional[int] = None,
         title_search: Optional[str] = None
     ) -> Dict[str, Any]:
         """
@@ -163,11 +155,9 @@ class ComparisonService:
         Args:
             page: Page number (1-indexed)
             page_size: Number of records per page
-            has_multiple_graph_types: If True, only return questions evaluated with >1 graph type
-            sort_by: Field to sort by (creation_date, score, evaluation_count, question_id)
+            sort_by: Field to sort by (creation_date, score, evaluation_count, question_id, adaptive_rag_f1, simple_rag_f1, pure_llm_f1)
             sort_order: Sort direction (asc, desc)
             tags: Comma-separated list of tags to filter by
-            min_score: Minimum score filter
             title_search: Partial title search (case-insensitive)
 
         Returns:
@@ -175,7 +165,6 @@ class ComparisonService:
         """
         logger.info(f"Getting evaluated questions (page={page}, page_size={page_size}, sort={sort_by} {sort_order})")
 
-        # Subquery to get distinct graph types per question
         subquery = self.db.query(
             AnswerEvaluation.stackoverflow_question_id,
             func.count(func.distinct(AnswerEvaluation.graph_type)).label('graph_type_count'),
@@ -185,39 +174,52 @@ class ComparisonService:
             AnswerEvaluation.stackoverflow_question_id
         ).subquery()
 
-        # Main query joining with questions
+        def make_arch_subquery(graph_type_value: str):
+            return self.db.query(
+                AnswerEvaluation.stackoverflow_question_id,
+                func.avg(AnswerEvaluation.bert_f1).label('avg_f1')
+            ).filter(
+                AnswerEvaluation.graph_type == graph_type_value
+            ).group_by(
+                AnswerEvaluation.stackoverflow_question_id
+            ).subquery()
+
+        adaptive_rag_subq = make_arch_subquery("adaptive_rag")
+        simple_rag_subq = make_arch_subquery("simple_rag")
+        pure_llm_subq = make_arch_subquery("pure_llm")
+
         query = self.db.query(
             SOQuestion,
             subquery.c.graph_types,
             subquery.c.total_evaluations,
-            subquery.c.graph_type_count
+            subquery.c.graph_type_count,
+            adaptive_rag_subq.c.avg_f1.label('adaptive_rag_f1'),
+            simple_rag_subq.c.avg_f1.label('simple_rag_f1'),
+            pure_llm_subq.c.avg_f1.label('pure_llm_f1')
         ).join(
             subquery,
             SOQuestion.stack_overflow_id == subquery.c.stackoverflow_question_id
+        ).outerjoin(
+            adaptive_rag_subq,
+            SOQuestion.stack_overflow_id == adaptive_rag_subq.c.stackoverflow_question_id
+        ).outerjoin(
+            simple_rag_subq,
+            SOQuestion.stack_overflow_id == simple_rag_subq.c.stackoverflow_question_id
+        ).outerjoin(
+            pure_llm_subq,
+            SOQuestion.stack_overflow_id == pure_llm_subq.c.stackoverflow_question_id
         )
 
-        # Filter for multiple graph types if requested
-        if has_multiple_graph_types:
-            query = query.filter(subquery.c.graph_type_count > 1)
-
-        # Tag filter
         if tags:
             tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
             for tag in tag_list:
                 query = query.filter(func.lower(SOQuestion.tags).contains(tag))
 
-        # Min score filter
-        if min_score is not None:
-            query = query.filter(SOQuestion.score >= min_score)
-
-        # Title search filter (case-insensitive partial match)
         if title_search:
             query = query.filter(SOQuestion.title.ilike(f"%{title_search}%"))
 
-        # Get total count before pagination
         total = query.count()
 
-        # Sorting
         sort_func = desc if sort_order == "desc" else asc
         if sort_by == "score":
             query = query.order_by(sort_func(SOQuestion.score))
@@ -225,28 +227,46 @@ class ComparisonService:
             query = query.order_by(sort_func(subquery.c.total_evaluations))
         elif sort_by == "question_id":
             query = query.order_by(sort_func(SOQuestion.stack_overflow_id))
-        else:  # default: creation_date
+        elif sort_by == "adaptive_rag_f1":
+            query = query.order_by(sort_func(adaptive_rag_subq.c.avg_f1).nulls_last())
+        elif sort_by == "simple_rag_f1":
+            query = query.order_by(sort_func(simple_rag_subq.c.avg_f1).nulls_last())
+        elif sort_by == "pure_llm_f1":
+            query = query.order_by(sort_func(pure_llm_subq.c.avg_f1).nulls_last())
+        else:
             query = query.order_by(sort_func(SOQuestion.creation_date))
 
-        # Pagination
         offset = (page - 1) * page_size
         query = query.offset(offset).limit(page_size)
 
         results = query.all()
 
+        question_ids = [q[0].stack_overflow_id for q in results]
+
+        avg_metrics = self.get_avg_metrics_by_architecture(question_ids) if question_ids else {}
+
         questions = []
-        for question, graph_types, total_evals, graph_count in results:
-            # Parse tags (stored as comma-separated string)
+        for question, graph_types, total_evals, graph_count, _, _, _ in results:
             tag_list = question.tags.split(',') if question.tags else []
+
+            question_avg_metrics = avg_metrics.get(question.stack_overflow_id, {})
+            metrics_by_architecture = None
+            if question_avg_metrics:
+                metrics_by_architecture = {
+                    "adaptive_rag": question_avg_metrics.get("adaptive_rag"),
+                    "simple_rag": question_avg_metrics.get("simple_rag"),
+                    "pure_llm": question_avg_metrics.get("pure_llm")
+                }
 
             questions.append({
                 "question_id": question.stack_overflow_id,
                 "question_title": question.title,
-                "available_graph_types": [gt for gt in graph_types if gt],  # Filter None
+                "available_graph_types": [gt for gt in graph_types if gt],
                 "total_evaluations": total_evals,
                 "has_multiple_graph_types": graph_count > 1,
                 "tags": tag_list,
-                "score": question.score
+                "score": question.score,
+                "metrics_by_architecture": metrics_by_architecture
             })
 
         total_pages = math.ceil(total / page_size) if page_size > 0 else 0
@@ -282,7 +302,6 @@ class ComparisonService:
             "iteration_metrics": None
         }
 
-        # Get evaluation to find graph_execution_id
         evaluation = self.db.query(AnswerEvaluation).filter(
             AnswerEvaluation.id == evaluation_id
         ).first()
@@ -290,16 +309,13 @@ class ComparisonService:
         if not evaluation:
             return details
 
-        # Get graph execution data if available
         graph_execution = None
 
         if evaluation.graph_execution_id:
-            # Direct lookup via foreign key
             graph_execution = self.db.query(GraphExecution).filter(
                 GraphExecution.id == evaluation.graph_execution_id
             ).first()
 
-        # Fallback: Lookup via session_id for legacy data without graph_execution_id
         if not graph_execution and evaluation.session_id:
             graph_execution = self.db.query(GraphExecution).filter(
                 GraphExecution.session_id == evaluation.session_id
@@ -312,7 +328,6 @@ class ComparisonService:
             details["graph_trace"] = graph_execution.execution_path
             details["node_timings"] = graph_execution.node_timings
 
-        # Get retrieved documents
         retrieved_docs = self.db.query(RetrievedDocument).filter(
             RetrievedDocument.evaluation_id == evaluation_id
         ).all()
@@ -332,7 +347,178 @@ class ComparisonService:
                 for doc in retrieved_docs
             ]
 
+        embedding_model = evaluation.embedding_model
+        if not embedding_model and retrieved_docs:
+            first_collection_name = retrieved_docs[0].collection_name
+            if first_collection_name:
+                collection = self.db.query(CollectionConfiguration).filter(
+                    CollectionConfiguration.name == first_collection_name
+                ).first()
+                if collection:
+                    embedding_model = collection.embedding_model
+
+        details["embedding_model"] = embedding_model
+
         return details
+
+    def get_aggregated_statistics(
+        self,
+        group_by: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Get aggregated statistics across all evaluations, grouped by specified fields.
+
+        Args:
+            group_by: List of fields to group by. Options: 'graph_type', 'llm_model', 'embedding_model'
+                     Default: ['graph_type']
+
+        Returns:
+            Dict with statistics list and metadata
+        """
+        if not group_by:
+            group_by = ['graph_type']
+
+        logger.info(f"Getting aggregated statistics grouped by: {group_by}")
+
+        group_columns = []
+        if 'graph_type' in group_by:
+            group_columns.append(AnswerEvaluation.graph_type)
+        if 'llm_model' in group_by:
+            group_columns.append(AnswerEvaluation.llm_model)
+
+        include_embedding = 'embedding_model' in group_by
+
+        if include_embedding:
+            query = self.db.query(
+                AnswerEvaluation.graph_type,
+                AnswerEvaluation.llm_model if 'llm_model' in group_by else cast(null(), String).label('llm_model'),
+                func.coalesce(AnswerEvaluation.embedding_model, CollectionConfiguration.embedding_model).label('embedding_model'),
+                func.count(func.distinct(AnswerEvaluation.id)).label('n'),
+                func.avg(AnswerEvaluation.bert_f1).label('bert_f1_mean'),
+                func.stddev(AnswerEvaluation.bert_f1).label('bert_f1_std'),
+                func.avg(AnswerEvaluation.llm_correctness_score).label('llm_correctness_mean'),
+                func.stddev(AnswerEvaluation.llm_correctness_score).label('llm_correctness_std'),
+                func.avg(AnswerEvaluation.processing_time_ms).label('processing_time_ms_mean')
+            ).outerjoin(
+                RetrievedDocument, RetrievedDocument.evaluation_id == AnswerEvaluation.id
+            ).outerjoin(
+                CollectionConfiguration, RetrievedDocument.collection_name == CollectionConfiguration.name
+            )
+
+            group_cols = [AnswerEvaluation.graph_type]
+            if 'llm_model' in group_by:
+                group_cols.append(AnswerEvaluation.llm_model)
+            group_cols.append(func.coalesce(AnswerEvaluation.embedding_model, CollectionConfiguration.embedding_model))
+
+            query = query.group_by(*group_cols)
+        else:
+            select_cols = [
+                AnswerEvaluation.graph_type,
+                func.count(AnswerEvaluation.id).label('n'),
+                func.avg(AnswerEvaluation.bert_f1).label('bert_f1_mean'),
+                func.stddev(AnswerEvaluation.bert_f1).label('bert_f1_std'),
+                func.avg(AnswerEvaluation.llm_correctness_score).label('llm_correctness_mean'),
+                func.stddev(AnswerEvaluation.llm_correctness_score).label('llm_correctness_std'),
+                func.avg(AnswerEvaluation.processing_time_ms).label('processing_time_ms_mean')
+            ]
+
+            if 'llm_model' in group_by:
+                select_cols.insert(1, AnswerEvaluation.llm_model)
+            else:
+                select_cols.insert(1, cast(null(), String).label('llm_model'))
+
+            query = self.db.query(*select_cols)
+
+            group_cols = [AnswerEvaluation.graph_type]
+            if 'llm_model' in group_by:
+                group_cols.append(AnswerEvaluation.llm_model)
+
+            query = query.group_by(*group_cols)
+
+        results = query.all()
+
+        total_evaluations = self.db.query(func.count(AnswerEvaluation.id)).scalar() or 0
+
+        statistics = []
+        for row in results:
+            if include_embedding:
+                stat = {
+                    "graph_type": row.graph_type or "adaptive_rag",
+                    "llm_model": row.llm_model if 'llm_model' in group_by else None,
+                    "embedding_model": row.embedding_model,
+                    "n": row.n,
+                    "bert_f1_mean": float(row.bert_f1_mean) if row.bert_f1_mean else None,
+                    "bert_f1_std": float(row.bert_f1_std) if row.bert_f1_std else None,
+                    "llm_correctness_mean": float(row.llm_correctness_mean) if row.llm_correctness_mean else None,
+                    "llm_correctness_std": float(row.llm_correctness_std) if row.llm_correctness_std else None,
+                    "processing_time_ms_mean": float(row.processing_time_ms_mean) if row.processing_time_ms_mean else None
+                }
+            else:
+                stat = {
+                    "graph_type": row.graph_type or "adaptive_rag",
+                    "llm_model": row.llm_model if 'llm_model' in group_by else None,
+                    "embedding_model": None,
+                    "n": row.n,
+                    "bert_f1_mean": float(row.bert_f1_mean) if row.bert_f1_mean else None,
+                    "bert_f1_std": float(row.bert_f1_std) if row.bert_f1_std else None,
+                    "llm_correctness_mean": float(row.llm_correctness_mean) if row.llm_correctness_mean else None,
+                    "llm_correctness_std": float(row.llm_correctness_std) if row.llm_correctness_std else None,
+                    "processing_time_ms_mean": float(row.processing_time_ms_mean) if row.processing_time_ms_mean else None
+                }
+            statistics.append(stat)
+
+        statistics.sort(key=lambda x: x['n'], reverse=True)
+
+        logger.info(f"Found {len(statistics)} configuration groups with {total_evaluations} total evaluations")
+
+        return {
+            "statistics": statistics,
+            "total_evaluations": total_evaluations,
+            "group_by": group_by
+        }
+
+    def get_avg_metrics_by_architecture(
+        self,
+        question_ids: List[int]
+    ) -> Dict[int, Dict[str, Dict[str, Optional[float]]]]:
+        """
+        Get the average metrics for each architecture for a list of questions.
+
+        Args:
+            question_ids: List of StackOverflow question IDs
+
+        Returns:
+            Dict mapping question_id -> architecture -> metrics
+        """
+        if not question_ids:
+            return {}
+
+        results = self.db.query(
+            AnswerEvaluation.stackoverflow_question_id,
+            AnswerEvaluation.graph_type,
+            func.avg(AnswerEvaluation.bert_f1).label('avg_bert_f1'),
+            func.avg(AnswerEvaluation.llm_correctness_score).label('avg_llm_correctness')
+        ).filter(
+            AnswerEvaluation.stackoverflow_question_id.in_(question_ids)
+        ).group_by(
+            AnswerEvaluation.stackoverflow_question_id,
+            AnswerEvaluation.graph_type
+        ).all()
+
+        avg_metrics: Dict[int, Dict[str, Dict[str, Optional[float]]]] = {}
+        for row in results:
+            question_id = row.stackoverflow_question_id
+            graph_type = row.graph_type or "adaptive_rag"
+
+            if question_id not in avg_metrics:
+                avg_metrics[question_id] = {}
+
+            avg_metrics[question_id][graph_type] = {
+                "avg_bert_f1": float(row.avg_bert_f1) if row.avg_bert_f1 else None,
+                "avg_llm_correctness": float(row.avg_llm_correctness) if row.avg_llm_correctness else None
+            }
+
+        return avg_metrics
 
     def _calculate_metrics_summary(
         self,
@@ -353,7 +539,6 @@ class ComparisonService:
             if not evaluations:
                 continue
 
-            # Calculate averages
             bert_f1_scores = [e.bert_f1 for e in evaluations if e.bert_f1 is not None]
             bert_precision_scores = [e.bert_precision for e in evaluations if e.bert_precision is not None]
             bert_recall_scores = [e.bert_recall for e in evaluations if e.bert_recall is not None]
@@ -374,7 +559,6 @@ class ComparisonService:
         return summary
 
 
-# Dependency for FastAPI
 def get_comparison_service(db: Session) -> ComparisonService:
     """Get ComparisonService instance with database session"""
     return ComparisonService(db)

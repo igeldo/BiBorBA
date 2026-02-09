@@ -17,6 +17,11 @@ class CollectionResponse(BaseModel):
     question_count: int
     created_at: str
     last_rebuilt_at: Optional[str]
+    embedding_model: Optional[str] = None
+
+    chroma_exists: Optional[bool] = None
+    needs_rebuild: Optional[bool] = None
+    last_health_check: Optional[str] = None
 
     class Config:
         from_attributes = True

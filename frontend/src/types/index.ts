@@ -9,9 +9,8 @@ export enum GraphType {
 export interface QueryRequest {
   question: string
   session_id: string
-  include_stackoverflow: boolean
   graph_type?: GraphType
-  retriever_type?: 'pdf' | 'stackoverflow'
+  collection_ids?: number[]
   llm_config?: {
     temperature?: number
   }
@@ -201,7 +200,7 @@ export interface PaginatedQuestionsResponse {
   has_prev: boolean
 }
 
-export type ViewType = 'query' | 'data' | 'collection-management' | 'batch-queries' | 'batch-progress' | 'comparison'
+export type ViewType = 'query' | 'data' | 'collection-management' | 'batch-queries' | 'batch-progress' | 'comparison' | 'missing-questions'
 
 // Collection Management Types
 
@@ -213,10 +212,16 @@ export interface Collection {
   question_count: number
   created_at: string
   last_rebuilt_at?: string
+  embedding_model?: string
   // Health Status
   chroma_exists?: boolean
   needs_rebuild?: boolean
   last_health_check?: string
+}
+
+export interface CurrentModels {
+  embedding_model: string
+  llm_model: string
 }
 
 export interface CreateCollectionRequest {
@@ -361,6 +366,10 @@ export interface BatchQueryResult {
     recall: number
     f1: number
   }
+  llm_correctness?: {
+    score: number      // 0.0-1.0 normalized
+    model: string      // Evaluator model
+  }
   graph_trace?: string[]
   iteration_metrics?: IterationMetrics
   node_timings?: Record<string, number>
@@ -432,6 +441,8 @@ export interface QuestionWithCollections {
   is_answered: boolean
   creation_date: string
   collections: QuestionCollectionInfo[]
+  evaluation_count: number
+  latest_evaluation_date?: string
 }
 
 // Graph Comparison Types
@@ -460,6 +471,11 @@ export interface EvaluationWithGraphType {
   rewritten_question?: string
   retrieved_documents?: RetrievedDocument[]
   iteration_metrics?: IterationMetrics
+  llm_model?: string  // e.g. "gemma3:12b"
+  embedding_model?: string  // e.g. "embeddinggemma:latest"
+  // LLM Correctness evaluation
+  llm_correctness_score?: number  // 0.0-1.0 normalized
+  llm_correctness_model?: string  // e.g. "gemma3:12b"
 }
 
 export interface GraphComparisonResponse {
@@ -476,8 +492,21 @@ export interface ComparisonMetricsSummary {
   avg_bert_precision?: number
   avg_bert_recall?: number
   avg_processing_time_ms?: number
+  avg_llm_correctness?: number
   evaluation_count: number
   latest_evaluation_date?: string
+}
+
+// Architecture Metrics for question list
+export interface ArchitectureMetrics {
+  avg_bert_f1?: number
+  avg_llm_correctness?: number
+}
+
+export interface MetricsByArchitecture {
+  adaptive_rag?: ArchitectureMetrics
+  simple_rag?: ArchitectureMetrics
+  pure_llm?: ArchitectureMetrics
 }
 
 export interface EvaluatedQuestionListItem {
@@ -488,6 +517,7 @@ export interface EvaluatedQuestionListItem {
   has_multiple_graph_types: boolean
   tags: string[]
   score: number
+  metrics_by_architecture?: MetricsByArchitecture
 }
 
 export interface PaginatedEvaluatedQuestionsResponse {
@@ -495,6 +525,131 @@ export interface PaginatedEvaluatedQuestionsResponse {
   total: number
   page: number
   page_size: number
+  total_pages: number
+  has_next: boolean
+  has_prev: boolean
+}
+
+// Aggregated Statistics Types
+
+export interface ConfigurationStatistics {
+  graph_type: string
+  llm_model?: string
+  embedding_model?: string
+  n: number
+  bert_f1_mean?: number
+  bert_f1_std?: number
+  llm_correctness_mean?: number
+  llm_correctness_std?: number
+  processing_time_ms_mean?: number
+}
+
+export interface AggregatedStatisticsResponse {
+  statistics: ConfigurationStatistics[]
+  total_evaluations: number
+  group_by: string[]
+}
+
+// Export Feature Types
+
+export type ExportFormat = 'csv' | 'json' | 'latex'
+export type ExportType = 'full' | 'statistics' | 'comparison'
+
+export interface ExportFilterRequest {
+  start_date?: string
+  end_date?: string
+  graph_types?: string[]
+  question_ids?: number[]
+  min_bert_f1?: number
+  has_multiple_graph_types?: boolean
+  tags?: string[]
+  min_score?: number
+  llm_model?: string  // e.g. "gemma3:12b", "gemma3:4b"
+  embedding_model?: string  // e.g. "embeddinggemma:latest"
+  deduplicate_latest_only?: boolean
+}
+
+export interface FullExportRequest {
+  format: ExportFormat
+  filters?: ExportFilterRequest
+  include_retrieved_documents?: boolean
+  include_full_answers?: boolean
+  include_node_timings?: boolean
+}
+
+export interface StatisticsExportRequest {
+  format: ExportFormat
+  filters?: ExportFilterRequest
+  group_by?: string[]
+  include_confidence_intervals?: boolean
+  include_std?: boolean
+}
+
+export interface ComparisonExportRequest {
+  format: ExportFormat
+  filters?: ExportFilterRequest
+  baseline_graph_type?: string
+  metric?: string
+}
+
+export interface ExportProgress {
+  phase: string
+  processed: number
+  total: number
+  percent: number
+}
+
+export interface ExportJobStartResponse {
+  job_id: string
+  message: string
+  export_type: ExportType
+  format: ExportFormat
+}
+
+export interface ExportJobStatus {
+  job_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  export_type: ExportType
+  format: ExportFormat
+  progress: ExportProgress
+  started_at: string
+  completed_at?: string
+  file_size_bytes?: number
+  download_url?: string
+  error?: string
+  parameters: Record<string, any>
+}
+
+// Missing Questions Coverage Types
+
+export interface CurrentConfigInfo {
+  llm_model: string
+  llm_correctness_model: string
+  embedding_model: string
+}
+
+export interface GraphTypeMissingInfo {
+  count: number
+  question_ids: number[]
+}
+
+export interface MissingQuestionInfo {
+  stack_overflow_id: number
+  title: string
+  tags: string[]
+  score: number
+  collections: QuestionCollectionInfo[]
+}
+
+export interface MissingQuestionsResponse {
+  current_config: CurrentConfigInfo
+  total_questions: number
+  missing_by_graph_type: Record<string, GraphTypeMissingInfo>
+  questions: MissingQuestionInfo[]
+  // Pagination metadata
+  page: number
+  page_size: number
+  total_missing: number
   total_pages: number
   has_next: boolean
   has_prev: boolean

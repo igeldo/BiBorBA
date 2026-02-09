@@ -1,6 +1,6 @@
 """
 Batched Ollama Embeddings
-Wrapper für OllamaEmbeddings mit automatischem Batching
+Wrapper for OllamaEmbeddings with automatic batching
 """
 
 import logging
@@ -12,17 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 class BatchedOllamaEmbeddings(Embeddings):
-    """
-    Wrapper für OllamaEmbeddings mit automatischem Batching
-    Verhindert "context length exceeded" Fehler bei großen Dokumentmengen
-    """
+    """Wrapper for OllamaEmbeddings with automatic batching.
+    Prevents 'context length exceeded' errors with large document sets."""
 
     def __init__(self, model: str, base_url: str, batch_size: int = 10):
         """
         Args:
-            model: Name des Ollama Embedding-Modells
+            model: Name of the Ollama embedding model
             base_url: Ollama Base URL
-            batch_size: Maximale Anzahl von Dokumenten pro Batch (default: 10)
+            batch_size: Maximum number of documents per batch (default: 10)
         """
         self._embeddings = OllamaEmbeddings(
             model=model,
@@ -52,11 +50,9 @@ class BatchedOllamaEmbeddings(Embeddings):
             return []
 
         if total_docs <= self.batch_size:
-            # Small enough - process directly
             logger.debug(f"Embedding {total_docs} documents in single batch")
             return self._embeddings.embed_documents(texts)
 
-        # Process in batches
         logger.info(f"Embedding {total_docs} documents in batches of {self.batch_size}")
 
         all_embeddings = []
@@ -74,7 +70,6 @@ class BatchedOllamaEmbeddings(Embeddings):
             except Exception as e:
                 logger.error(f"Error embedding batch {i//self.batch_size + 1}: {e}")
 
-                # Retry with smaller batches if error occurs
                 if len(batch) > 5:
                     logger.info(f"Retrying batch with smaller sub-batches (size 5)")
                     for j in range(0, len(batch), 5):
@@ -85,7 +80,6 @@ class BatchedOllamaEmbeddings(Embeddings):
                             logger.debug(f"Successfully embedded sub-batch {j//5 + 1}")
                         except Exception as sub_e:
                             logger.error(f"Failed to embed sub-batch: {sub_e}")
-                            # Try one document at a time as last resort
                             for k, single_text in enumerate(sub_batch):
                                 try:
                                     single_embedding = self._embeddings.embed_documents([single_text])
@@ -94,7 +88,6 @@ class BatchedOllamaEmbeddings(Embeddings):
                                     logger.error(f"Failed to embed single document: {single_e}")
                                     raise
                 else:
-                    # Already small batch - try one at a time
                     logger.info(f"Retrying batch one document at a time")
                     for k, single_text in enumerate(batch):
                         try:
